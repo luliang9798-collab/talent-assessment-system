@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # 后端服务
+  backend:
+    build:
+      context: ./backend-nodejs
+      dockerfile: Dockerfile.prod
+    container_name: talent-assessment-backend-prod
+    restart: always
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      - NODE_ENV=production
+      - DB_PATH=/app/data/talent_assessment.db
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    networks:
+      - talent-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 前端服务 (Nginx)
+  frontend:
+    image: nginx:alpine
+    container_name: talent-assessment-frontend-prod
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - backend
+    networks:
+      - talent-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 数据库备份服务
+  db-backup:
+    image: alpine
+    container_name: talent-assessment-backup
+    restart: always
+    volumes:
+      - ./data:/data:ro
+      - ./backups:/backups
+    command: sh -c "while true; do sleep 86400; cp /data/talent_assessment.db /backups/talent_assessment_$$(date +%Y%m%d).db; done"
+    networks:
+      - talent-net
+
+networks:
+  talent-net:
+    driver: bridge
+
+volumes:
+  db-data:
+  backups:

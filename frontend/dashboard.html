@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统主页 - 人才测评系统</title>
+    <link rel="stylesheet" href="/libs/element-plus.css">
+    <script src="/libs/vue.global.js"></script>
+    <script src="/libs/element-plus.js"></script>
+    <script src="/libs/axios.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; }
+        .header { 
+            background: white; 
+            padding: 20px 30px; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1); 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+        }
+        .header h1 { 
+            color: #303133; 
+            font-size: 24px; 
+        }
+        .user-info { 
+            display: flex; 
+            align-items: center; 
+            gap: 15px; 
+        }
+        .content { 
+            max-width: 1200px; 
+            margin: 30px auto; 
+            padding: 0 20px; 
+        }
+        .welcome { 
+            background: white; 
+            padding: 40px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1); 
+            text-align: center; 
+        }
+        .welcome h2 { 
+            color: #303133; 
+            margin-bottom: 20px; 
+        }
+        .welcome p { 
+            color: #606266; 
+            line-height: 1.8; 
+        }
+        .stats { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); 
+            gap: 20px; 
+            margin-top: 30px; 
+        }
+        .stat-card { 
+            background: white; 
+            padding: 30px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1); 
+        }
+        .stat-card h3 { 
+            color: #909399; 
+            font-size: 14px; 
+            margin-bottom: 10px; 
+        }
+        .stat-card .number { 
+            color: #409EFF; 
+            font-size: 36px; 
+            font-weight: bold; 
+        }
+        .btn { 
+            padding: 10px 20px; 
+            background: #409EFF; 
+            color: white; 
+            border: none; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            font-size: 14px; 
+            margin: 5px; 
+        }
+        .btn:hover { 
+            background: #66b1ff; 
+        }
+        .btn-success { 
+            background: #67C23A; 
+        }
+        .btn-success:hover { 
+            background: #85ce61; 
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="header">
+            <h1>人才测评系统</h1>
+            <div class="user-info">
+                <span>欢迎, {{ user?.realName || '用户' }}</span>
+                <button class="btn" @click="handleLogout">退出登录</button>
+            </div>
+        </div>
+        
+        <div class="content">
+            <div class="welcome">
+                <h2>欢迎使用人才测评系统</h2>
+                <p>系统已成功登录！您可以在此处访问所有功能。</p>
+                <div style="margin-top: 30px;">
+                    <button class="btn" @click="testAPI">测试API连接</button>
+                    <button class="btn btn-success" @click="goToTest">系统诊断</button>
+                </div>
+                <div v-if="apiTestResult" style="margin-top: 20px; padding: 15px; background: #f5f7fa; border-radius: 4px; text-align: left;">
+                    <strong>API测试结果:</strong>
+                    <pre style="margin-top: 10px;">{{ apiTestResult }}</pre>
+                </div>
+            </div>
+            
+            <div class="stats">
+                <div class="stat-card">
+                    <h3>测评项目</h3>
+                    <div class="number">{{ stats.projects }}</div>
+                </div>
+                <div class="stat-card">
+                    <h3>测评任务</h3>
+                    <div class="number">{{ stats.tasks }}</div>
+                </div>
+                <div class="stat-card">
+                    <h3>测评报告</h3>
+                    <div class="number">{{ stats.reports }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        console.log('Dashboard loading...');
+        
+        const { createApp, ref, onMounted } = Vue;
+        
+        createApp({
+            setup() {
+                const user = ref(null);
+                const stats = ref({ projects: 0, tasks: 0, reports: 0 });
+                const apiTestResult = ref('');
+                
+                onMounted(() => {
+                    // 检查登录状态
+                    const userStr = localStorage.getItem('user');
+                    if (!userStr) {
+                        window.location.href = '/login-simple.html';
+                        return;
+                    }
+                    
+                    try {
+                        user.value = JSON.parse(userStr);
+                        loadStats();
+                    } catch (error) {
+                        console.error('Failed to parse user:', error);
+                        window.location.href = '/login-simple.html';
+                    }
+                });
+                
+                const loadStats = async () => {
+                    const token = localStorage.getItem('token');
+                    try {
+                        const response = await axios.get('http://localhost:3000/api/projects', {
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
+                        if (response.data.success) {
+                            stats.value.projects = response.data.projects?.length || 0;
+                        }
+                    } catch (error) {
+                        console.error('Failed to load stats:', error);
+                    }
+                };
+                
+                const testAPI = async () => {
+                    const token = localStorage.getItem('token');
+                    try {
+                        const response = await axios.get('http://localhost:3000/api/projects', {
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
+                        apiTestResult.value = JSON.stringify(response.data, null, 2);
+                    } catch (error) {
+                        apiTestResult.value = 'Error: ' + (error.response?.data?.message || error.message);
+                    }
+                };
+                
+                const goToTest = () => {
+                    window.location.href = '/test.html';
+                };
+                
+                const handleLogout = () => {
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('user');
+                    window.location.href = '/login-simple.html';
+                };
+                
+                return {
+                    user,
+                    stats,
+                    apiTestResult,
+                    testAPI,
+                    goToTest,
+                    handleLogout
+                };
+            }
+        }).use(ElementPlus).mount('#app');
+    </script>
+</body>
+</html>

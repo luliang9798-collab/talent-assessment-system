@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>测评报告 - 人才测评系统</title>
+    <link rel="stylesheet" href="/libs/element-plus.css">
+    <script src="/libs/vue.global.js"></script>
+    <script src="/libs/element-plus.js"></script>
+    <script src="/libs/axios.min.js"></script>
+    <script src="/libs/echarts.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Microsoft YaHei', 'PingFang SC', Arial, sans-serif; background: #f5f7fa; color: #303133; }
+        
+        .page-header { background: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .page-header h1 { font-size: 18px; color: #303133; }
+        .btn-back-to-home { padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; transition: all 0.3s; }
+        .btn-back-to-home:hover { background: #5568d3; }
+        
+        .report-container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+        
+        /* 报告封面 */
+        .report-cover {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 50px 40px;
+            border-radius: 12px;
+            margin-bottom: 24px;
+            box-shadow: 0 8px 32px rgba(102,126,234,0.3);
+        }
+        .report-cover h1 { font-size: 28px; margin-bottom: 8px; font-weight: 600; }
+        .report-cover .subtitle { font-size: 16px; opacity: 0.85; margin-bottom: 20px; }
+        .report-cover .meta { display: flex; gap: 40px; font-size: 14px; opacity: 0.9; }
+        .report-cover .meta span { display: flex; align-items: center; gap: 6px; }
+        
+        /* 卡片 */
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 32px;
+            margin-bottom: 24px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            border: 1px solid #ebeef5;
+        }
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 24px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #667eea;
+            color: #303133;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .card-title .icon { font-size: 22px; }
+        
+        /* 维度得分条 */
+        .dimension-bar-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .dimension-name {
+            width: 120px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #606266;
+            flex-shrink: 0;
+        }
+        .dimension-bar-bg {
+            flex: 1;
+            height: 28px;
+            background: #f0f2f5;
+            border-radius: 14px;
+            overflow: hidden;
+            position: relative;
+        }
+        .dimension-bar-fill {
+            height: 100%;
+            border-radius: 14px;
+            transition: width 1s ease;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 12px;
+            font-size: 13px;
+            font-weight: 600;
+            color: white;
+            min-width: 60px;
+        }
+        .dimension-score {
+            width: 60px;
+            text-align: right;
+            font-size: 20px;
+            font-weight: bold;
+            color: #409EFF;
+            flex-shrink: 0;
+            margin-left: 12px;
+        }
+        .dimension-percentile {
+            width: 80px;
+            text-align: right;
+            font-size: 12px;
+            color: #909399;
+            flex-shrink: 0;
+            margin-left: 8px;
+        }
+        
+        /* 雷达图 */
+        .radar-chart { width: 100%; height: 400px; }
+        
+        /* 文字内容 */
+        .summary-text {
+            font-size: 15px;
+            line-height: 1.8;
+            color: #606266;
+            background: #f9fafb;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        .strength-item, .weakness-item, .suggestion-item {
+            padding: 12px 16px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .strength-item {
+            background: #f0f9eb;
+            border-left: 3px solid #67c23a;
+            color: #67c23a;
+        }
+        .weakness-item {
+            background: #fef0f0;
+            border-left: 3px solid #f56c6c;
+            color: #f56c6c;
+        }
+        .suggestion-item {
+            background: #edf2fc;
+            border-left: 3px solid #409eff;
+            color: #409eff;
+        }
+        
+        /* 总结文本（保留换行） */
+        .summary-text {
+            font-size: 14px;
+            color: #606266;
+            line-height: 1.8;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        
+        /* 类型标签（MBTI） */
+        .type-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 24px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            margin-right: 12px;
+        }
+        
+        /* 职业匹配 */
+        .career-tag {
+            display: inline-block;
+            background: #ecf5ff;
+            color: #409eff;
+            padding: 6px 16px;
+            border-radius: 16px;
+            font-size: 13px;
+            margin: 4px;
+            border: 1px solid #d9ecff;
+        }
+        
+        /* 按钮 */
+        .btn-group {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin-top: 32px;
+        }
+        .btn {
+            padding: 12px 32px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102,126,234,0.4); }
+        .btn-default {
+            background: white;
+            color: #606266;
+            border: 1px solid #dcdfe6;
+        }
+        .btn-default:hover { border-color: #667eea; color: #667eea; }
+        
+        /* 加载状态 */
+        .loading-container {
+            text-align: center;
+            padding: 80px 20px;
+        }
+        
+        /* 分数等级 */
+        .score-level {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 500;
+            margin-left: 8px;
+        }
+        .level-excellent { background: #f0f9eb; color: #67c23a; }
+        .level-good { background: #edf2fc; color: #409eff; }
+        .level-average { background: #fdf6ec; color: #e6a23c; }
+        .level-poor { background: #fef0f0; color: #f56c6c; }
+        
+        /* 面试问题（招聘场景） */
+        .interview-q {
+            background: #fffbeb;
+            border-left: 3px solid #f59e0b;
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            border-radius: 0 8px 8px 0;
+            font-size: 14px;
+            color: #92400e;
+        }
+        
+        @media print {
+            .btn-group { display: none; }
+            .card { box-shadow: none; border: 1px solid #ddd; page-break-inside: avoid; }
+            .report-cover { background: #667eea !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .dimension-bar-fill { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            body { background: white; }
+            .radar-chart { height: 400px !important; }
+        }
+        
+        /* PDF导出按钮样式 */
+        .btn-pdf {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .btn-pdf:hover { background: #c82333; transform: translateY(-2px); }
+    </style>
+</head>
+<body>
+    <!-- 顶部导航 -->
+    <div class="page-header">
+        <h1>人才测评系统</h1>
+        <button class="btn-back-to-home" onclick="window.location.href='/index.html'">⬅️ 返回首页</button>
+    </div>
+    
+    <div id="app">
+        <!-- 加载中 -->
+        <div class="report-container" v-if="loading">
+            <div class="loading-container">
+                <el-icon class="is-loading" style="font-size: 50px; color: #667eea;"></el-icon>
+                <p style="font-size: 18px; color: #909399; margin-top: 20px;">正在生成专业测评报告...</p>
+            </div>
+        </div>
+        
+        <!-- 报告内容 -->
+        <div class="report-container" v-if="!loading && report">
+            <!-- 封面 -->
+            <div class="report-cover">
+                <h1>{{ report.toolName || '人才测评报告' }}</h1>
+                <div class="subtitle">{{ report.type ? '类型：' + report.type + '（' + report.typeTitle + '）' : '' }}</div>
+                <div class="meta">
+                    <span>📅 生成时间：{{ formatDate(report.created_at) || '刚刚' }}</span>
+                    <span>👤 测评人：{{ report.userName || '匿名用户' }}</span>
+                    <span>📊 总分：{{ report.overallScore || report.totalScore || '-' }}分</span>
+                </div>
+            </div>
+            
+            <!-- 各维度得分 -->
+            <div class="card">
+                <div class="card-title"><span class="icon">📊</span> 各维度得分详情</div>
+                <div v-for="(score, dim) in report.dimensions" :key="dim" class="dimension-bar-item">
+                    <div class="dimension-name">{{ dim }}</div>
+                    <div class="dimension-bar-bg">
+                        <div class="dimension-bar-fill" :style="{ width: (score / 5 * 100) + '%', background: getBarColor(score) }">
+                            {{ score }}
+                        </div>
+                    </div>
+                    <div class="dimension-score">{{ score }}</div>
+                    <div class="dimension-percentile" v-if="report.percentiles && report.percentiles[dim]">
+                        常模 {{ report.percentiles[dim] }}%
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 雷达图 -->
+            <div class="card">
+                <div class="card-title"><span class="icon">📈</span> 能力维度雷达图</div>
+                <div ref="radarChart" class="radar-chart"></div>
+            </div>
+            
+            <!-- 综合分析 -->
+            <div class="card" v-if="report.summary">
+                <div class="card-title"><span class="icon">📋</span> 综合分析</div>
+                <div class="summary-text">{{ report.summary }}</div>
+            </div>
+            
+            <!-- 专业评估摘要（增强版2.0） -->
+            <div class="card" v-if="report.professionalEnhancement && report.professionalEnhancement.executiveSummary" style="background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);">
+                <div class="card-title"><span class="icon">🎯</span> 专业评估摘要 <span style="font-size: 12px; color: #67c23a; margin-left: 10px;">Professional 2.0</span></div>
+                <div style="background: white; padding: 20px; border-radius: 8px; line-height: 2;">
+                    {{ report.professionalEnhancement.executiveSummary }}
+                </div>
+            </div>
+            
+            <!-- 详细维度分析（专业版） -->
+            <div class="card" v-if="report.professionalEnhancement && report.professionalEnhancement.detailedAnalysis">
+                <div class="card-title"><span class="icon">🔬</span> 专业维度分析</div>
+                <div v-for="(analysis, dim) in report.professionalEnhancement.detailedAnalysis" :key="dim" style="margin-bottom: 24px; padding: 20px; background: #fafbfc; border-radius: 8px;">
+                    <h4 style="color: #303133; margin-bottom: 12px;">{{ dim }}（{{ analysis.score }}分）</h4>
+                    <p style="color: #606266; line-height: 1.8; margin-bottom: 12px;">{{ analysis.interpretation }}</p>
+                    <div style="display: flex; gap: 20px; flex-wrap: wrap; font-size: 13px;">
+                        <div v-if="analysis.workplaceBehavior"><strong>职场行为：</strong>{{ analysis.workplaceBehavior }}</div>
+                        <div v-if="analysis.energySource"><strong>能量来源：</strong>{{ analysis.energySource }}</div>
+                        <div v-if="analysis.conflictStyle"><strong>冲突风格：</strong>{{ analysis.conflictStyle }}</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 职业发展建议（专业版） -->
+            <div class="card" v-if="report.professionalEnhancement && report.professionalEnhancement.careerMatch && report.professionalEnhancement.careerMatch.topRoles">
+                <div class="card-title"><span class="icon">💼</span> 职业发展建议（专业版）</div>
+                <div style="margin-bottom: 16px;">{{ report.professionalEnhancement.careerMatch.reasoning }}</div>
+                <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+                    <div v-for="career in report.professionalEnhancement.careerMatch.topRoles" :key="career.role" 
+                         style="background: white; border: 1px solid #e4e7ed; border-radius: 8px; padding: 16px; min-width: 200px;">
+                        <div style="font-size: 16px; font-weight: bold; color: #303133; margin-bottom: 8px;">{{ career.role }}</div>
+                        <div style="font-size: 13px; color: #67c23a; margin-bottom: 8px;">匹配度：{{ career.match }}%</div>
+                        <div style="font-size: 13px; color: #606266;">{{ career.reason }}</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 发展路线图 -->
+            <div class="card" v-if="report.professionalEnhancement && report.professionalEnhancement.developmentRoadmap">
+                <div class="card-title"><span class="icon">🗺️</span> 个人发展路线图</div>
+                <div style="margin-bottom: 16px;">
+                    <h4 style="margin-bottom: 8px; color: #606266;">短期目标（3个月）</h4>
+                    <ul style="padding-left: 20px; color: #606266;">
+                        <li v-for="(item, idx) in report.professionalEnhancement.developmentRoadmap.shortTerm" :key="idx">{{ item }}</li>
+                    </ul>
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <h4 style="margin-bottom: 8px; color: #606266;">长期规划（12个月）</h4>
+                    <ul style="padding-left: 20px; color: #606266;">
+                        <li v-for="(item, idx) in report.professionalEnhancement.developmentRoadmap.longTerm" :key="idx">{{ item }}</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- 风险评估 -->
+            <div class="card" v-if="report.professionalEnhancement && report.professionalEnhancement.riskAssessment && report.professionalEnhancement.riskAssessment.risks.length > 0">
+                <div class="card-title"><span class="icon">⚠️</span> 风险评估与建议</div>
+                <div v-for="(risk, idx) in report.professionalEnhancement.riskAssessment.risks" :key="idx" 
+                     style="background: #fef0f0; border-left: 3px solid #f56c6c; padding: 12px 16px; margin-bottom: 12px; border-radius: 0 8px 8px 0;">
+                    <div style="font-weight: bold; color: #f56c6c; margin-bottom: 6px;">风险因子：{{ risk.factor }}（{{ risk.level }}风险）</div>
+                    <div style="font-size: 14px; color: #606266;">缓解建议：{{ risk.mitigation }}</div>
+                </div>
+                <div style="margin-top: 12px; font-size: 14px; color: #909399;">整体风险等级：{{ report.professionalEnhancement.riskAssessment.overallRisk }}</div>
+            </div>
+            
+            <!-- MBTI专属：类型描述 -->
+            <div class="card" v-if="report.typeDesc">
+                <div class="card-title"><span class="icon">🧠</span> 类型特征分析</div>
+                <div style="display: flex; align-items: center; margin-bottom: 20px;">
+                    <span class="type-badge">{{ report.type }}</span>
+                    <span style="font-size: 18px; color: #606266;">{{ report.typeTitle }}</span>
+                </div>
+                <div class="summary-text">{{ report.typeDesc }}</div>
+                
+                <div style="margin-top: 24px;" v-if="report.typeScores">
+                    <h4 style="margin-bottom: 12px; color: #606266;">各维度倾向</h4>
+                    <div v-for="(score, dim) in report.typeScores" :key="dim" style="display: flex; align-items: center; margin-bottom: 8px;">
+                        <span style="width: 30px; font-size: 13px; color: #909399;">{{ dim[0] }}</span>
+                        <div style="flex: 1; height: 12px; background: #f0f2f5; border-radius: 6px; margin: 0 8px; position: relative;">
+                            <div :style="{ width: score + '%', height: '100%', background: '#667eea', borderRadius: '6px' }"></div>
+                        </div>
+                        <span style="width: 30px; font-size: 13px; color: #909399; text-align: right;">{{ dim[1] }}</span>
+                        <span style="margin-left: 8px; font-size: 13px; color: #409EFF; width: 40px;">{{ score }}%</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 优势分析 -->
+            <div class="card" v-if="report.strengths && report.strengths.length">
+                <div class="card-title"><span class="icon">✅</span> 优势分析</div>
+                <div v-for="(s, i) in report.strengths" :key="i" class="strength-item">
+                    <strong>{{ s.name || '优势'+(i+1) }}：</strong>{{ s.desc || s }}
+                </div>
+            </div>
+            
+            <!-- 待提升 -->
+            <div class="card" v-if="report.weaknesses && report.weaknesses.length">
+                <div class="card-title"><span class="icon">⚠️</span> 待提升领域</div>
+                <div v-for="(w, i) in report.weaknesses" :key="i" class="weakness-item">
+                    <strong>{{ w.name || '领域'+(i+1) }}：</strong>{{ w.desc || w }}
+                </div>
+            </div>
+            
+            <!-- 发展建议 -->
+            <div class="card" v-if="report.suggestions && report.suggestions.length">
+                <div class="card-title"><span class="icon">💡</span> 发展建议</div>
+                <div v-for="(s, i) in report.suggestions" :key="i" class="suggestion-item">
+                    <strong>建议{{ i+1 }}：</strong>{{ s }}
+                </div>
+            </div>
+            
+            <!-- 岗位匹配（大五人格） -->
+            <div class="card" v-if="report.jobMatch && report.jobMatch.length">
+                <div class="card-title"><span class="icon">🎯</span> 岗位匹配建议</div>
+                <div v-for="(j, i) in report.jobMatch" :key="i" class="suggestion-item">{{ j }}</div>
+            </div>
+            
+            <!-- 职业推荐（MBTI/霍兰德） -->
+            <div class="card" v-if="report.careers && report.careers.length">
+                <div class="card-title"><span class="icon">💼</span> 推荐职业方向</div>
+                <div>
+                    <span v-for="(c, i) in report.careers" :key="i" class="career-tag">{{ c }}</span>
+                </div>
+            </div>
+            
+            <!-- 工作风格（MBTI） -->
+            <div class="card" v-if="report.workStyle">
+                <div class="card-title"><span class="icon">⚡</span> 工作风格</div>
+                <div class="summary-text">{{ report.workStyle }}</div>
+            </div>
+            
+            <!-- 沟通建议（DISC） -->
+            <div class="card" v-if="report.communicationTips">
+                <div class="card-title"><span class="icon">💬</span> 沟通建议</div>
+                <div class="summary-text">{{ report.communicationTips }}</div>
+            </div>
+            
+            <!-- 管理建议（DISC） -->
+            <div class="card" v-if="report.managementStyle">
+                <div class="card-title"><span class="icon">👔</span> 管理风格</div>
+                <div class="summary-text">{{ report.managementStyle }}</div>
+            </div>
+            
+            <!-- 情商专项 -->
+            <div class="card" v-if="report.eqLevel">
+                <div class="card-title"><span class="icon">❤️</span> 情商水平评估</div>
+                <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 16px;">
+                    <span style="font-size: 36px; font-weight: bold;" :style="{ color: report.eqLevel === '优秀' ? '#67c23a' : report.eqLevel === '良好' ? '#409EFF' : '#e6a23c' }">{{ report.totalScore }}</span>
+                    <span :class="'score-level level-' + (report.eqLevel === '优秀' ? 'excellent' : report.eqLevel === '良好' ? 'good' : 'average')">{{ report.eqLevel }}</span>
+                </div>
+                <div v-if="report.leadershipPotential" class="summary-text" style="margin-top: 12px;">领导力潜力：{{ report.leadershipPotential }}</div>
+            </div>
+            
+            <!-- 面试提问建议（招聘场景） -->
+            <div class="card" v-if="report.interviewQuestions && report.interviewQuestions.length">
+                <div class="card-title"><span class="icon">🎤</span> 面试追问建议（招聘参考）</div>
+                <div v-for="(q, i) in report.interviewQuestions" :key="i" class="interview-q">{{ q }}</div>
+            </div>
+            
+            <!-- 底部按钮 -->
+            <div class="btn-group">
+                <button class="btn btn-primary" onclick="window.print()">🖨️ 打印报告</button>
+                <button class="btn btn-print" @click="printReport">🖨️ 打印报告</button>
+                <button class="btn btn-default" @click="goBack">← 返回列表</button>
+            </div>
+        </div>
+        
+        <!-- 无数据 -->
+        <div class="report-container" v-if="!loading && !report">
+            <div class="card" style="text-align: center; padding: 60px 20px;">
+                <div style="font-size: 60px; margin-bottom: 20px;">📄</div>
+                <h3 style="color: #909399; margin-bottom: 12px;">暂无报告数据</h3>
+                <p style="color: #c0c4cc;">请先完成测评，或检查报告ID是否正确</p>
+                <button class="btn btn-primary" style="margin-top: 20px;" @click="goBack">返回首页</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const { createApp, ref, onMounted, nextTick, watch } = Vue;
+        
+        createApp({
+            setup() {
+                const report = ref(null);
+                const loading = ref(true);
+                const radarChart = ref(null);
+                let chartInstance = null;
+
+                // 加载报告
+                const loadReport = async () => {
+                    const params = new URLSearchParams(window.location.search);
+                    const resultId = params.get('resultId');
+                    const toolId = params.get('toolId');
+
+                    if (!resultId && !toolId) {
+                        loading.value = false;
+                        return;
+                    }
+
+                    try {
+                        const token = localStorage.getItem('token') || localStorage.getItem('tas_token');
+                        const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
+
+                        let apiUrl = '/api/results/' + resultId;
+                        const resp = await axios.get(apiUrl, { headers: headers });
+
+                        if (resp.data && resp.data.success && resp.data.result) {
+                            const r = resp.data.result;
+                            var rd = typeof r.report_data === 'string' ? JSON.parse(r.report_data) : r.report_data;
+                            rd.overallScore = r.total_score || rd.overallScore || rd.totalScore || 0;
+                            rd.created_at = r.created_at;
+                            report.value = rd;
+                        } else {
+                            report.value = getDemoReport(toolId || 1);
+                        }
+
+                        await nextTick();
+                        setTimeout(() => renderRadarChart(), 300);
+                    } catch (e) {
+                        console.error('加载报告失败', e);
+                        report.value = getDemoReport(toolId || 1);
+                        await nextTick();
+                        setTimeout(() => renderRadarChart(), 300);
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                // 渲染雷达图（增强版：带多重保障）
+                const renderRadarChart = () => {
+                    try {
+                        // 检查ECharts是否加载
+                        if (typeof echarts === 'undefined') {
+                            console.warn('ECharts未加载，延迟重试...');
+                            setTimeout(() => renderRadarChart(), 500);
+                            return;
+                        }
+
+                        // 检查数据和DOM
+                        if (!report.value || !report.value.dimensions) {
+                            console.warn('无dimensions数据，跳过雷达图');
+                            return;
+                        }
+
+                        var domEl = radarChart.value;
+                        if (!domEl) {
+                            console.warn('DOM元素未就绪，延迟重试...');
+                            setTimeout(() => renderRadarChart(), 300);
+                            return;
+                        }
+
+                        // 销毁旧实例（避免重复渲染）
+                        if (chartInstance) { chartInstance.dispose(); }
+
+                        chartInstance = echarts.init(domEl);
+                        var dims = Object.keys(report.value.dimensions);
+                        var scores = Object.values(report.value.dimensions).map(function(v) { return parseFloat(v) || 0; });
+
+                        var option = {
+                            tooltip: {
+                                trigger: 'item',
+                                formatter: function(p) { return p.name + ': ' + p.value.toFixed(1) + '分'; }
+                            },
+                            legend: { data: ['能力得分'], bottom: 0 },
+                            radar: {
+                                indicator: dims.map(function(d) { return { name: d, max: 5 }; }),
+                                shape: 'polygon',
+                                splitNumber: 5,
+                                axisName: { color: '#303133', fontSize: 12, fontWeight: 'bold' },
+                                splitLine: { lineStyle: { color: '#dcdfe6' } },
+                                splitArea: { areaStyle: { color: ['#fff', '#f8f9fb'] } },
+                                axisLine: { lineStyle: { color: '#dcdfe6' } }
+                            },
+                            series: [{
+                                type: 'radar',
+                                data: [{
+                                    value: scores,
+                                    name: '能力得分',
+                                    symbol: 'circle',
+                                    symbolSize: 6,
+                                    areaStyle: {
+                                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                            { offset: 0, color: 'rgba(102,126,234,0.35)' },
+                                            { offset: 1, color: 'rgba(118,75,162,0.15)' }
+                                        ])
+                                    },
+                                    lineStyle: { color: '#667eea', width: 2.5 },
+                                    itemStyle: { color: '#667eea', borderColor: '#fff', borderWidth: 1.5 }
+                                }]
+                            }]
+                        };
+
+                        chartInstance.setOption(option);
+
+                        // 响应式
+                        window.addEventListener('resize', function() {
+                            if (chartInstance) chartInstance.resize();
+                        });
+                    } catch(e) {
+                        console.error('雷达图渲染失败:', e.message);
+                    }
+                };
+                
+                // 条形图颜色
+                const getBarColor = (score) => {
+                    if (score >= 4) return 'linear-gradient(90deg, #67c23a, #85ce61)';
+                    if (score >= 3) return 'linear-gradient(90deg, #409eff, #66b1ff)';
+                    if (score >= 2) return 'linear-gradient(90deg, #e6a23c, #ebb563)';
+                    return 'linear-gradient(90deg, #f56c6c, #f89898)';
+                };
+                
+                // 日期格式化
+                const formatDate = (str) => {
+                    if (!str) return '-';
+                    return new Date(str).toLocaleDateString('zh-CN');
+                };
+                
+                // 返回
+                const goBack = () => {
+                    window.location.href = '/index.html#/reports';
+                };
+                
+                // 打印报告
+                const printReport = () => {
+                    if (!report.value || !report.value.id) {
+                        alert('请先加载报告数据');
+                        return;
+                    }
+
+                    const token = localStorage.getItem('tas_token') || localStorage.getItem('token');
+                    if (!token) {
+                        alert('请先登录');
+                        return;
+                    }
+                    
+                    // 在新窗口打开打印报告
+                    const printWindow = window.open(`/api/reports/${report.value.id}/print?token=${token}`, '_blank');
+                    if (!printWindow) {
+                        alert('请允许浏览器打开弹出窗口');
+                    }
+                };
+                
+                // 模拟报告数据（开发模式）
+                const getDemoReport = (toolId) => {
+                    const demos = {
+                        1: { toolName: '大五人格测评', overallScore: 3.7, dimensions: {'开放性':3.6,'尽责性':4.0,'外向性':3.8,'宜人性':4.2,'情绪稳定性':2.5}, percentiles: {'开放性':65,'尽责性':80,'外向性':70,'宜人性':85,'情绪稳定性':40}, summary: '您在外向性、宜人性和尽责性方面表现优秀，情绪稳定性有提升空间。', strengths: ['宜人性得分高，善于合作', '尽责性强，值得信赖'], weaknesses: ['情绪稳定性偏低，需加强压力管理'], suggestions: ['建议学习情绪调节技巧', '多参与团队合作发挥优势'] },
+                        2: { toolName: 'MBTI职业性格测评', type: 'INTJ', typeTitle: '建筑师', typeDesc: '具有创造性思维，喜欢理论和抽象概念，独立性强。', dimensions: {E:2.3,I:3.7,S:2.5,N:3.8,T:3.5,F:2.2,J:3.2,P:2.5}, typeScores:{E:35,I:65,S:38,N:62,T:61,F:39,J:58,P:42}, careers: ['系统架构师','战略顾问','数据分析师'], workStyle: '您喜欢独立工作，深度思考后再表达。', strengths: ['独立思考能力强','战略思维出色'] },
+                        3: { toolName: 'DISC行为风格测评', dimensions: {D:3.2,I:3.8,S:4.1,C:3.5}, dominantStyle:'S', dominantDesc:'稳健型：关系导向，耐心合作', summary:'您的主导风格是S型，善于支持和合作。', strengths: ['团队合作好','善于倾听'], communicationTips: '沟通温和，善于倾听，需要时间思考。' },
+                        5: { toolName: '情商（EQ）测评', totalScore: 3.6, eqLevel: '良好', dimensions: {'自我意识':3.5,'自我调节':3.8,'内在激励':3.2,'同理心':4.0,'社交技能':3.5}, summary:'您的情商处于良好水平，同理心表现突出。', strengths: ['同理心强','自我调节能力好'], suggestions: ['建议提升社交技能','继续加强自我觉察'] }
+                    };
+                    return demos[toolId] || demos[1];
+                };
+                
+                onMounted(() => {
+                    loadReport();
+                });
+                
+                return {
+                    report, loading, radarChart,
+                    getBarColor, formatDate, goBack
+                };
+            }
+        }).use(ElementPlus).mount('#app');
+    </script>
+</body>
+</html>

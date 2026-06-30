@@ -1,0 +1,241 @@
+/**
+ * 胜任力模型测评工具 - 完整题目库
+ * 基于SHL、Hay Group等胜任力模型设计
+ */
+
+const leadershipQuestions = [
+    // 战略思维维度 (14题)
+    {dimension: '战略思维', question: '我能够站在公司整体战略高度思考部门工作规划'},
+    {dimension: '战略思维', question: '我善于识别行业趋势和市场变化带来的机会'},
+    {dimension: '战略思维', question: '我能够将长期目标分解为可执行的短期行动计划'},
+    {dimension: '战略思维', question: '我习惯于在行动前先分析全局和长远影响'},
+    {dimension: '战略思维', question: '我能够预见决策可能带来的连锁反应'},
+    {dimension: '战略思维', question: '我善于在复杂信息中提取关键因素'},
+    {dimension: '战略思维', question: '我能够平衡短期业绩和长期发展'},
+    {dimension: '战略思维', question: '我善于将外部信息转化为内部行动策略'},
+    {dimension: '战略思维', question: '我能够从多个角度分析问题'},
+    {dimension: '战略思维', question: '我善于发现业务模式和创新机会'},
+    {dimension: '战略思维', question: '我能够制定清晰的战略路线图'},
+    {dimension: '战略思维', question: '我善于评估战略方案的可行性'},
+    {dimension: '战略思维', question: '我能够将战略传达给团队并获得认同'},
+    {dimension: '战略思维', question: '我定期复盘战略执行效果并调整'},
+    
+    // 决策能力维度 (14题)
+    {dimension: '决策能力', question: '我在面对不完全信息时仍能做出合理决策'},
+    {dimension: '决策能力', question: '我能够权衡决策的收益和风险'},
+    {dimension: '决策能力', question: '我在压力下仍能保持理性决策'},
+    {dimension: '决策能力', question: '我善于收集合适的信息支持决策'},
+    {dimension: '决策能力', question: '我能够为决策结果负责并承担相应责任'},
+    {dimension: '决策能力', question: '我善于邀请相关人员参与决策过程'},
+    {dimension: '决策能力', question: '我能够区分紧急和重要的事项优先级'},
+    {dimension: '决策能力', question: '我善于在多个方案中做出最优选择'},
+    {dimension: '决策能力', question: '我能够根据新信息及时调整决策'},
+    {dimension: '决策能力', question: '我善于向团队解释决策理由'},
+    {dimension: '决策能力', question: '我能够在团队分歧时做出最终决定'},
+    {dimension: '决策能力', question: '我善于评估决策的执行难度'},
+    {dimension: '决策能力', question: '我能够平衡数据和直觉做出决策'},
+    {dimension: '决策能力', question: '我善于记录决策过程和经验教训'},
+    
+    // 影响力维度 (14题)
+    {dimension: '影响力', question: '我能够通过有理有据的说服影响他人观点'},
+    {dimension: '影响力', question: '我善于建立跨部门的影响力'},
+    {dimension: '影响力', question: '我能够通过榜样行为影响团队'},
+    {dimension: '影响力', question: '我善于根据听众调整沟通方式'},
+    {dimension: '影响力', question: '我能够通过建立信任来增强影响力'},
+    {dimension: '影响力', question: '我善于在没有直接职权下推动事情'},
+    {dimension: '影响力', question: '我能够通过数据和事实说服他人'},
+    {dimension: '影响力', question: '我善于识别并影响关键决策人'},
+    {dimension: '影响力', question: '我能够在会议中有效引导讨论方向'},
+    {dimension: '影响力', question: '我善于处理他人的异议和质疑'},
+    {dimension: '影响力', question: '我能够通过讲故事的方式增强说服力'},
+    {dimension: '影响力', question: '我善于建立并维护关键人脉'},
+    {dimension: '影响力', question: '我能够在复杂组织中推动共识'},
+    {dimension: '影响力', question: '我善于将个人想法转化为团队共识'},
+    
+    // 发展他人维度 (14题)
+    {dimension: '发展他人', question: '我主动关注团队成员的成长和发展'},
+    {dimension: '发展他人', question: '我善于通过辅导和反馈帮助他人提升'},
+    {dimension: '发展他人', question: '我愿意授权并给予团队成员成长机会'},
+    {dimension: '发展他人', question: '我能够为团队成员制定个人发展计划'},
+    {dimension: '发展他人', question: '我善于识别并培养高潜力人才'},
+    {dimension: '发展他人', question: '我愿意分享知识和经验帮助他人'},
+    {dimension: '发展他人', question: '我能够提供具体、及时、建设性的反馈'},
+    {dimension: '发展他人', question: '我善于激发团队成员的潜能'},
+    {dimension: '发展他人', question: '我能够为团队成员提供挑战性任务'},
+    {dimension: '发展他人', question: '我关注团队成员的职业发展路径'},
+    {dimension: '发展他人', question: '我善于通过提问引导他人自己找到答案'},
+    {dimension: '发展他人', question: '我愿意为团队成员的学习和发展投入资源'},
+    {dimension: '发展他人', question: '我能够客观评估他人的能力和潜力'},
+    {dimension: '发展他人', question: '我善于庆祝团队成员的成功和进步'},
+    
+    // 变革管理维度 (14题)
+    {dimension: '变革管理', question: '我能够积极推动必要的组织变革'},
+    {dimension: '变革管理', question: '我善于管理变革过程中的阻力'},
+    {dimension: '变革管理', question: '我能够清晰传达变革的必要性和愿景'},
+    {dimension: '变革管理', question: '我善于在变革中保持团队稳定'},
+    {dimension: '变革管理', question: '我能够识别变革的关键利益相关者'},
+    {dimension: '变革管理', question: '我善于设计变革的实施路径'},
+    {dimension: '变革管理', question: '我能够在变革中保持灵活性和适应性'},
+    {dimension: '变革管理', question: '我善于处理变革中的情绪反应'},
+    {dimension: '变革管理', question: '我能够建立变革联盟和支持网络'},
+    {dimension: '变革管理', question: '我善于将变革与组织文化相结合'},
+    {dimension: '变革管理', question: '我能够在变革中保持透明沟通'},
+    {dimension: '变革管理', question: '我善于识别并快速解决变革中的问题'},
+    {dimension: '变革管理', question: '我能够衡量变革的效果并持续改进'},
+    {dimension: '变革管理', question: '我善于在变革后巩固成果'}
+];
+
+const communicationQuestions = [
+    // 倾听理解维度 (13题)
+    {dimension: '倾听理解', question: '我能够专注地倾听他人说话而不打断'},
+    {dimension: '倾听理解', question: '我善于通过提问确认自己理解了对方的意思'},
+    {dimension: '倾听理解', question: '我能够听懂他人话语背后的情感和需求'},
+    {dimension: '倾听理解', question: '我在倾听时保持眼神接触和开放的肢体语言'},
+    {dimension: '倾听理解', question: '我能够区分事实、观点和情绪'},
+    {dimension: '倾听理解', question: '我善于总结对方表达的核心要点'},
+    {dimension: '倾听理解', question: '我能够在对方表达不清时耐心引导'},
+    {dimension: '倾听理解', question: '我避免在没有完全理解前就下判断'},
+    {dimension: '倾听理解', question: '我能够通过复述确认理解是否准确'},
+    {dimension: '倾听理解', question: '我善于创造安全的沟通氛围'},
+    {dimension: '倾听理解', question: '我能够识别并回应非语言信息'},
+    {dimension: '倾听理解', question: '我在倾听时不做其他分散注意力的事'},
+    {dimension: '倾听理解', question: '我尊重不同的观点和表达方式'},
+    
+    // 清晰表达维度 (13题)
+    {dimension: '清晰表达', question: '我能够用简洁明了的语言表达复杂想法'},
+    {dimension: '清晰表达', question: '我善于根据听众调整表达的内容和方式'},
+    {dimension: '清晰表达', question: '我在表达前会组织好思路和逻辑'},
+    {dimension: '清晰表达', question: '我能够使用具体的例子来说明抽象概念'},
+    {dimension: '清晰表达', question: '我善于使用可视化工具辅助表达'},
+    {dimension: '清晰表达', question: '我能够在表达中突出重点和关键信息'},
+    {dimension: '清晰表达', question: '我避免使用可能引起误解的模糊语言'},
+    {dimension: '清晰表达', question: '我善于使用故事和比喻增强表达效果'},
+    {dimension: '清晰表达', question: '我能够在表达后确认对方理解了我的意思'},
+    {dimension: '清晰表达', question: '我善于控制表达的节奏和停顿'},
+    {dimension: '清晰表达', question: '我能够根据反馈及时调整表达内容'},
+    {dimension: '清晰表达', question: '我善于使用数据和事实支持我的观点'},
+    {dimension: '清晰表达', question: '我在表达时保持自信和专业的态度'},
+    
+    // 书面沟通维度 (13题)
+    {dimension: '书面沟通', question: '我能够写出结构清晰、逻辑严密的文档'},
+    {dimension: '书面沟通', question: '我在写作前会明确目标和读者对象'},
+    {dimension: '书面沟通', question: '我善于使用标题、列表和段落组织内容'},
+    {dimension: '书面沟通', question: '我能够用简洁的语言表达完整意思'},
+    {dimension: '书面沟通', question: '我在发送前会仔细校对文档'},
+    {dimension: '书面沟通', question: '我能够根据文档类型使用合适的格式和风格'},
+    {dimension: '书面沟通', question: '我善于使用图表和附件增强文档效果'},
+    {dimension: '书面沟通', question: '我能够在书面沟通中保持专业和礼貌'},
+    {dimension: '书面沟通', question: '我避免书面沟通中的歧义和误解'},
+    {dimension: '书面沟通', question: '我能够根据反馈改进文档质量'},
+    {dimension: '书面沟通', question: '我善于写电子邮件清晰表达请求和期望'},
+    {dimension: '书面沟通', question: '我能够在书面沟通中适当使用强调和标注'},
+    {dimension: '书面沟通', question: '我能够撰写有说服力的提案和报告'},
+    
+    // 非语言沟通维度 (13题)
+    {dimension: '非语言沟通', question: '我能够意识到并控制自己的面部表情'},
+    {dimension: '非语言沟通', question: '我善于通过肢体语言增强表达效果'},
+    {dimension: '非语言沟通', question: '我能够解读他人的非语言信号'},
+    {dimension: '非语言沟通', question: '我在沟通中保持适当的眼神接触'},
+    {dimension: '非语言沟通', question: '我注意自己的语气和语调对沟通的影响'},
+    {dimension: '非语言沟通', question: '我能够在视频会议中保持良好的镜头感'},
+    {dimension: '非语言沟通', question: '我善于通过空间距离传达尊重和专业'},
+    {dimension: '非语言沟通', question: '我能够识别并回应他人的情绪信号'},
+    {dimension: '非语言沟通', question: '我在沟通中保持开放和友好的姿态'},
+    {dimension: '非语言沟通', question: '我善于使用手势辅助表达'},
+    {dimension: '非语言沟通', question: '我能够调整自己的沟通风格适应对方'},
+    {dimension: '非语言沟通', question: '我在跨文化沟通中注意非语言差异'},
+    {dimension: '非语言沟通', question: '我能够通过非语言方式建立信任'},
+    
+    // 冲突处理维度 (13题)
+    {dimension: '冲突处理', question: '我能够在冲突中保持冷静和客观'},
+    {dimension: '冲突处理', question: '我善于找到冲突的根本原因'},
+    {dimension: '冲突处理', question: '我能够在不伤害关系的前提下表达不同意见'},
+    {dimension: '冲突处理', question: '我善于引导冲突双方找到共同利益'},
+    {dimension: '冲突处理', question: '我能够在冲突中倾听各方观点'},
+    {dimension: '冲突处理', question: '我善于将情绪冲突转化为问题解决'},
+    {dimension: '冲突处理', question: '我能够在冲突中保持对事不对人'},
+    {dimension: '冲突处理', question: '我善于使用"我"语言表达感受而非指责'},
+    {dimension: '冲突处理', question: '我能够在冲突后修复和维护关系'},
+    {dimension: '冲突处理', question: '我善于在冲突中寻求双赢解决方案'},
+    {dimension: '冲突处理', question: '我能够识别并管理自己的冲突触发点'},
+    {dimension: '冲突处理', question: '我善于在团队中建立冲突处理规范'},
+    {dimension: '冲突处理', question: '我能够在冲突中保持建设性的沟通'}
+];
+
+const teamworkQuestions = [
+    // 合作精神维度 (12题)
+    {dimension: '合作精神', question: '我愿意为团队目标牺牲个人偏好'},
+    {dimension: '合作精神', question: '我主动分享信息和资源支持团队'},
+    {dimension: '合作精神', question: '我能够在团队中放下自我'},
+    {dimension: '合作精神', question: '我善于在不同意见中寻找共识'},
+    {dimension: '合作精神', question: '我愿意承担团队分配的任何任务'},
+    {dimension: '合作精神', question: '我能够在团队中保持积极态度'},
+    {dimension: '合作精神', question: '我尊重并重视团队成员的多样性'},
+    {dimension: '合作精神', question: '我善于在团队中建立合作氛围'},
+    {dimension: '合作精神', question: '我愿意为团队成功承担责任'},
+    {dimension: '合作精神', question: '我能够在团队压力下保持合作'},
+    {dimension: '合作精神', question: '我善于平衡个人目标和团队目标'},
+    {dimension: '合作精神', question: '我能够在合作中保持诚信和透明'},
+    
+    // 信任建立维度 (12题)
+    {dimension: '信任建立', question: '我能够言行一致，兑现承诺'},
+    {dimension: '信任建立', question: '我愿意在团队中展示真实和脆弱'},
+    {dimension: '信任建立', question: '我能够保守团队内部的信任信息'},
+    {dimension: '信任建立', question: '我善于通过小事建立信任'},
+    {dimension: '信任建立', question: '我能够在犯错时勇于承认'},
+    {dimension: '信任建立', question: '我信任团队成员的能力并授权'},
+    {dimension: '信任建立', question: '我能够在团队中营造心理安全感'},
+    {dimension: '信任建立', question: '我善于通过一致性建立可信度'},
+    {dimension: '信任建立', question: '我能够在团队中公平对待每个人'},
+    {dimension: '信任建立', question: '我愿意向团队寻求帮助和支持'},
+    {dimension: '信任建立', question: '我能够通过可靠的工作建立信任'},
+    {dimension: '信任建立', question: '我能够在团队中表达感激和认可'},
+    
+    // 角色贡献维度 (12题)
+    {dimension: '角色贡献', question: '我清楚自己在团队中的角色和职责'},
+    {dimension: '角色贡献', question: '我能够充分发挥自己的优势为团队贡献'},
+    {dimension: '角色贡献', question: '我愿意填补团队中的角色空白'},
+    {dimension: '角色贡献', question: '我能够在团队中承担领导角色'},
+    {dimension: '角色贡献', question: '我也能够在团队中当好追随者'},
+    {dimension: '角色贡献', question: '我能够根据团队需要调整自己的角色'},
+    {dimension: '角色贡献', question: '我善于识别并发挥团队成员的优势'},
+    {dimension: '角色贡献', question: '我能够在团队中贡献专业知识和技能'},
+    {dimension: '角色贡献', question: '我愿意承担团队中的困难任务'},
+    {dimension: '角色贡献', question: '我能够在团队中提供建设性反馈'},
+    {dimension: '角色贡献', question: '我善于在团队中促进决策和执行'},
+    {dimension: '角色贡献', question: '我能够在团队中维护标准和质量'},
+    
+    // 团队支持维度 (12题)
+    {dimension: '团队支持', question: '我主动关注团队成员的工作状态'},
+    {dimension: '团队支持', question: '我愿意在同事需要时提供帮助'},
+    {dimension: '团队支持', question: '我善于识别团队成员的优势和需求'},
+    {dimension: '团队支持', question: '我能够在团队中提供情感支持'},
+    {dimension: '团队支持', question: '我愿意为团队成员的成功喝彩'},
+    {dimension: '团队支持', question: '我能够在团队中分享知识和经验'},
+    {dimension: '团队支持', question: '我善于在团队中建立互助关系'},
+    {dimension: '团队支持', question: '我能够在团队成员缺席时提供支持'},
+    {dimension: '团队支持', question: '我愿意为团队新成员提供指导'},
+    {dimension: '团队支持', question: '我能够在团队中营造包容氛围'},
+    {dimension: '团队支持', question: '我善于在团队中促进工作生活平衡'},
+    {dimension: '团队支持', question: '我能够在团队中维护积极的氛围'},
+    
+    // 目标对齐维度 (12题)
+    {dimension: '目标对齐', question: '我清楚理解团队的愿景和目标'},
+    {dimension: '目标对齐', question: '我能够将个人目标与团队目标对齐'},
+    {dimension: '目标对齐', question: '我善于在团队中传达目标的重要性'},
+    {dimension: '目标对齐', question: '我能够在团队中追踪目标进展'},
+    {dimension: '目标对齐', question: '我愿意为团队目标调整个人计划'},
+    {dimension: '目标对齐', question: '我善于在团队中澄清目标误解'},
+    {dimension: '目标对齐', question: '我能够在团队中庆祝目标达成'},
+    {dimension: '目标对齐', question: '我善于在目标偏离时及时纠正'},
+    {dimension: '目标对齐', question: '我能够在团队中建立目标导向文化'},
+    {dimension: '目标对齐', question: '我愿意为团队目标投入额外努力'},
+    {dimension: '目标对齐', question: '我善于在团队中平衡多个目标'},
+    {dimension: '目标对齐', question: '我能够在团队中传达目标的意义'}
+];
+
+module.exports = {
+    leadershipQuestions,
+    communicationQuestions,
+    teamworkQuestions
+};

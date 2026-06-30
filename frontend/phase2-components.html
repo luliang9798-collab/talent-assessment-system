@@ -1,0 +1,196 @@
+<!-- 人才测评系统 - 第二期功能前端界面增强 -->
+
+<!-- 在原有index.html的<div id="app">标签后添加以下功能模块 -->
+
+<!-- 1. 数据上传模块 (在v-if="currentPage === 'upload'"处添加) -->
+<div v-if="currentPage === 'upload'" class="main-content">
+    <h2 class="page-title">数据上传</h2>
+    <div style="margin-bottom: 20px;">
+        <input type="file" ref="fileInput" @change="handleFileUpload" style="display: none;" accept=".xlsx,.xls,.csv">
+        <button @click="$refs.fileInput.click()" style="padding: 10px 20px; background: #409EFF; color: white; border: none; border-radius: 4px; cursor: pointer;">
+            上传Excel文件
+        </button>
+        <span style="margin-left: 10px; color: #909399;">支持 .xlsx, .xls, .csv 格式</span>
+    </div>
+    <div v-if="uploadResult" style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-radius: 4px;">
+        <div style="color: #67C23A; font-weight: bold;">✓ {{ uploadResult.message }}</div>
+        <div style="margin-top: 10px;">文件名: {{ uploadResult.fileName }}</div>
+        <div>记录数: {{ uploadResult.recordCount }}</div>
+        <div v-if="uploadResult.data && uploadResult.data.length > 0">
+            <h4>数据预览 (前10条):</h4>
+            <pre style="background: white; padding: 10px; border-radius: 4px; overflow: auto;">{{ JSON.stringify(uploadResult.data, null, 2) }}</pre>
+        </div>
+    </div>
+    <div v-if="uploadHistory.length > 0" style="margin-top: 30px;">
+        <h3>上传历史</h3>
+        <div v-for="item in uploadHistory" :key="item.id" style="padding: 10px; border: 1px solid #ebeef5; margin-bottom: 5px; border-radius: 4px;">
+            {{ item.file_name }} - {{ item.record_count }} 条记录 - {{ item.uploaded_at }}
+        </div>
+    </div>
+</div>
+
+<!-- 2. 测评任务管理 (在v-if="currentPage === 'tasks'"处修改) -->
+<div v-if="currentPage === 'tasks'" class="main-content">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2 class="page-title" style="margin: 0;">测评任务管理</h2>
+        <div>
+            <select v-model="selectedProjectId" style="padding: 8px; margin-right: 10px; border: 1px solid #dcdfe6; border-radius: 4px;">
+                <option value="">选择项目...</option>
+                <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.projectName }}</option>
+            </select>
+            <button @click="showAssignTaskDialog = true" style="padding: 10px 20px; background: #409EFF; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                分配任务
+            </button>
+        </div>
+    </div>
+    <div v-if="tasks.length === 0" style="text-align: center; color: #909399; padding: 40px;">
+        请选择项目查看任务
+    </div>
+    <div v-else>
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="background: #f5f7fa;">
+                    <th style="padding: 12px; text-align: left; border: 1px solid #ebeef5;">被测人</th>
+                    <th style="padding: 12px; text-align: left; border: 1px solid #ebeef5;">测评工具</th>
+                    <th style="padding: 12px; text-align: left; border: 1px solid #ebeef5;">状态</th>
+                    <th style="padding: 12px; text-align: left; border: 1px solid #ebeef5;">得分</th>
+                    <th style="padding: 12px; text-align: left; border: 1px solid #ebeef5;">提交时间</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr v-for="task in tasks" :key="task.id">
+                    <td style="padding: 12px; border: 1px solid #ebeef5;">{{ task.real_name || task.username }}</td>
+                    <td style="padding: 12px; border: 1px solid #ebeef5;">{{ task.tool_name }}</td>
+                    <td style="padding: 12px; border: 1px solid #ebeef5;">
+                        <span :style="{ color: task.status === 2 ? '#67C23A' : task.status === 1 ? '#E6A23C' : '#909399' }">
+                            {{ task.status === 0 ? '未开始' : task.status === 1 ? '进行中' : '已完成' }}
+                        </span>
+                    </td>
+                    <td style="padding: 12px; border: 1px solid #ebeef5;">{{ task.score || '-' }}</td>
+                    <td style="padding: 12px; border: 1px solid #ebeef5;">{{ task.submit_time || '-' }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 3. 报告管理 (在v-if="currentPage === 'reports'"处修改) -->
+<div v-if="currentPage === 'reports'" class="main-content">
+    <h2 class="page-title">测评报告</h2>
+    <div v-if="reports.length === 0" style="text-align: center; color: #909399; padding: 40px;">
+        暂无报告数据
+    </div>
+    <div v-else>
+        <div v-for="report in reports" :key="report.id" style="padding: 15px; border: 1px solid #ebeef5; border-radius: 4px; margin-bottom: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="font-weight: bold; margin-bottom: 5px;">报告编号: {{ report.report_code }}</div>
+                    <div style="color: #909399; font-size: 14px;">
+                        总体得分: <span style="color: #409EFF; font-weight: bold;">{{ report.overall_score || '暂无' }}</span>
+                    </div>
+                </div>
+                <button @click="viewReport(report.id)" style="padding: 8px 16px; background: #67C23A; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    查看报告
+                </button>
+            </div>
+            <div v-if="report.strengths" style="margin-top: 10px; padding: 10px; background: #f0f9ff; border-radius: 4px;">
+                <div style="font-weight: bold; color: #67C23A;">优势:</div>
+                <div>{{ report.strengths }}</div>
+            </div>
+            <div v-if="report.recommendations" style="margin-top: 5px; padding: 10px; background: #fdf6ec; border-radius: 4px;">
+                <div style="font-weight: bold; color: #E6A23C;">建议:</div>
+                <div>{{ report.recommendations }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 4. 用户管理增强 (在v-if="currentPage === 'users'"处修改) -->
+<div v-if="currentPage === 'users'" class="main-content">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2 class="page-title" style="margin: 0;">用户管理</h2>
+        <div>
+            <button @click="showImportDialog = true" style="padding: 10px 20px; background: #67C23A; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">
+                批量导入
+            </button>
+            <button @click="showAddUserDialog = true" style="padding: 10px 20px; background: #409EFF; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                添加用户
+            </button>
+        </div>
+    </div>
+    <div v-if="userList.length === 0" style="text-align: center; color: #909399; padding: 40px;">
+        暂无用户数据
+    </div>
+    <div v-else>
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="background: #f5f7fa;">
+                    <th style="padding: 12px; text-align: left; border: 1px solid #ebeef5;">用户名</th>
+                    <th style="padding: 12px; text-align: left; border: 1px solid #ebeef5;">姓名</th>
+                    <th style="padding: 12px; text-align: left; border: 1px solid #ebeef5;">邮箱</th>
+                    <th style="padding: 12px; text-align: left; border: 1px solid #ebeef5;">状态</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr v-for="user in userList" :key="user.id">
+                    <td style="padding: 12px; border: 1px solid #ebeef5;">{{ user.username }}</td>
+                    <td style="padding: 12px; border: 1px solid #ebeef5;">{{ user.real_name }}</td>
+                    <td style="padding: 12px; border: 1px solid #ebeef5;">{{ user.email }}</td>
+                    <td style="padding: 12px; border: 1px solid #ebeef5;">
+                        <span :style="{ color: user.status === 1 ? '#67C23A' : '#F56C6C' }">
+                            {{ user.status === 1 ? '启用' : '禁用' }}
+                        </span>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 分配任务对话框 -->
+<div v-if="showAssignTaskDialog" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center;">
+    <div style="background: white; padding: 30px; border-radius: 8px; width: 500px;">
+        <h3 style="margin-top: 0;">分配测评任务</h3>
+        <div style="margin-bottom: 15px;">
+            <label>选择用户:</label>
+            <select v-model="assignForm.userId" style="width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #dcdfe6; border-radius: 4px;">
+                <option value="">请选择...</option>
+                <option v-for="u in userList" :key="u.id" :value="u.id">{{ u.real_name || u.username }}</option>
+            </select>
+        </div>
+        <div style="margin-bottom: 15px;">
+            <label>选择测评工具:</label>
+            <select v-model="assignForm.toolId" style="width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #dcdfe6; border-radius: 4px;">
+                <option value="">请选择...</option>
+                <option v-for="t in tools" :key="t.id" :value="t.id">{{ t.tool_name }}</option>
+            </select>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+            <button @click="showAssignTaskDialog = false" style="padding: 8px 16px; border: 1px solid #dcdfe6; background: white; border-radius: 4px; cursor: pointer;">
+                取消
+            </button>
+            <button @click="assignTask" style="padding: 8px 16px; background: #409EFF; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                分配
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- 导入用户对话框 -->
+<div v-if="showImportDialog" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center;">
+    <div style="background: white; padding: 30px; border-radius: 8px; width: 500px;">
+        <h3 style="margin-top: 0;">批量导入用户</h3>
+        <p style="color: #909399; font-size: 14px;">请上传包含用户信息的Excel文件，必需列：用户名</p>
+        <div style="margin-bottom: 15px;">
+            <input type="file" ref="userFileInput" style="display: none;" accept=".xlsx,.xls" @change="handleUserImport">
+            <button @click="$refs.userFileInput.click()" style="padding: 10px 20px; background: #67C23A; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                选择Excel文件
+            </button>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+            <button @click="showImportDialog = false" style="padding: 8px 16px; border: 1px solid #dcdfe6; background: white; border-radius: 4px; cursor: pointer;">
+                关闭
+            </button>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统功能测试</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f7fa; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background: #f0f9ff; border: 1px solid #67c23a; color: #67c23a; }
+        .error { background: #fef0f0; border: 1px solid #f56c6c; color: #f56c6c; }
+        .info { background: #f4f4f5; border: 1px solid #909399; color: #909399; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>人才测评系统功能测试</h1>
+    
+    <div>
+        <button onclick="testLogin()">测试登录</button>
+        <button onclick="testTools()">测试测评工具API</button>
+        <button onclick="testAll()">测试所有功能</button>
+    </div>
+    
+    <div id="results" style="margin-top: 20px;"></div>
+    
+    <script>
+        let token = '';
+        
+        function addResult(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `test-result ${type}`;
+            div.innerHTML = message;
+            document.getElementById('results').appendChild(div);
+        }
+        
+        async function testLogin() {
+            addResult('开始测试登录...', 'info');
+            try {
+                const resp = await axios.post('http://localhost:3000/api/auth/login', {
+                    username: 'admin',
+                    password: 'admin123'
+                });
+                if (resp.data && resp.data.success) {
+                    token = resp.data.token;
+                    addResult('✅ 登录成功！令牌已获取。', 'success');
+                    return true;
+                } else {
+                    addResult('❌ 登录失败：' + resp.data.message, 'error');
+                    return false;
+                }
+            } catch (e) {
+                addResult('❌ 登录错误：' + e.message, 'error');
+                return false;
+            }
+        }
+        
+        async function testTools() {
+            addResult('开始测试测评工具API...', 'info');
+            if (!token) {
+                const loginSuccess = await testLogin();
+                if (!loginSuccess) return;
+            }
+            
+            try {
+                const resp = await axios.get('http://localhost:3000/api/tools', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (resp.data && resp.data.success) {
+                    const tools = resp.data.tools;
+                    addResult(`✅ 测评工具API成功！共 ${tools.length} 个工具。`, 'success');
+                    tools.forEach(t => {
+                        addResult(`  - ${t.tool_name} (${t.question_count}题)`, 'info');
+                    });
+                    return true;
+                } else {
+                    addResult('❌ API返回失败：' + resp.data.message, 'error');
+                    return false;
+                }
+            } catch (e) {
+                addResult('❌ API调用错误：' + e.message, 'error');
+                return false;
+            }
+        }
+        
+        async function testAll() {
+            document.getElementById('results').innerHTML = '';
+            addResult('开始全面测试...', 'info');
+            
+            // 测试登录
+            const loginSuccess = await testLogin();
+            if (!loginSuccess) {
+                addResult('登录失败，停止测试。', 'error');
+                return;
+            }
+            
+            // 测试测评工具
+            await testTools();
+            
+            // 测试其他API
+            const apis = [
+                { name: '用户列表', url: '/api/users' },
+                { name: '项目管理', url: '/api/projects' },
+                { name: '任务管理', url: '/api/tasks' },
+                { name: '测评结果', url: '/api/results' },
+                { name: '胜任力字典', url: '/api/competency/dictionary' },
+                { name: '岗位类型', url: '/api/competency/job-types' }
+            ];
+            
+            for (const api of apis) {
+                try {
+                    const resp = await axios.get('http://localhost:3000' + api.url, {
+                        headers: { 'Authorization': 'Bearer ' + token }
+                    });
+                    if (resp.data && resp.data.success) {
+                        addResult(`✅ ${api.name}API成功！`, 'success');
+                    } else {
+                        addResult(`⚠️ ${api.name}API返回失败：' + resp.data.message, 'error');
+                    }
+                } catch (e) {
+                    addResult(`❌ ${api.name}API调用错误：' + e.message, 'error');
+                }
+            }
+            
+            addResult('测试完成！', 'info');
+        }
+    </script>
+</body>
+</html>

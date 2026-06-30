@@ -1,0 +1,1539 @@
+const express = require('express');
+const sqlite3 = require('sqlite3').verbose();
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+const path = require('path');
+
+const app = express();
+const PORT = 3000;
+const JWT_SECRET = 'talent-assessment-secret-key-2026';
+
+app.use(cors());
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.static(path.join(__dirname, '../frontend')));
+
+// 数据库连接
+const DB_PATH = './talent_assessment_new.db';
+const db = new sqlite3.Database(DB_PATH, (err) => {
+    if (err) console.error('DB connection error:', err);
+    else console.log('Database connected:', DB_PATH);
+});
+
+// ========== JWT 认证中间件 ==========
+function auth(req, res, next) {
+    const header = req.headers['authorization'] || req.headers['Authorization'];
+    if (!header) return res.status(401).json({ success: false, message: '未提供认证令牌' });
+    const token = header.startsWith('Bearer ') ? header.split(' ')[1] : header;
+    try {
+        req.user = jwt.verify(token, JWT_SECRET);
+        next();
+    } catch (e) {
+        return res.status(401).json({ success: false, message: '令牌无效或已过期' });
+    }
+}
+
+// ========== 健康检查 ==========
+app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok', time: new Date().toISOString() });
+});
+
+// ========== 登录 ==========
+app.post('/api/auth/login', (req, res) => {
+    const { username, password } = req.body;
+    if (!username || !password) {
+        return res.json({ success: false, message: '请输入用户名和密码' });
+    }
+    db.get('SELECT * FROM users WHERE username = ?', [username], (err, user) => {
+        if (err) return res.json({ success: false, message: '数据库错误: ' + err.message });
+        if (!user) return res.json({ success: false, message: '用户不存在' });
+        if (!bcrypt.compareSync(password, user.password_hash)) {
+            return res.json({ success: false, message: '密码错误' });
+        }
+        const token = jwt.sign(
+            { userId: user.id, username: user.username },
+            JWT_SECRET,
+            { expiresIn: '24h' }
+        );
+        res.json({
+            success: true,
+            token: token,
+            user: { id: user.id, username: user.username, realName: user.real_name || '' }
+        });
+    });
+});
+
+// ========== 测评工具 ==========
+app.get('/api/tools', auth, (req, res) => {
+    db.all('SELECT * FROM assessment_tools ORDER BY id', [], (err, tools) => {
+        if (err) return res.json({ success: false, message: err.message });
+        res.json({ success: true, tools: tools || [] });
+    });
+});
+
+app.get('/api/tools/:toolId/questions', auth, (req, res) => {
+    const toolId = req.params.toolId;
+    // 使用正确的表名: questions
+    db.all('SELECT * FROM questions WHERE tool_id = ? ORDER BY order_num', [toolId], (err, questions) => {
+        if (err) return res.json({ success: false, message: err.message });
+
+        if (!questions || questions.length === 0) {
+            const defaultQs = getDefaultQuestions(parseInt(toolId));
+            return res.json({ success: true, questions: defaultQs, total: defaultQs.length });
+        }
+
+        // 转换为前端格式
+        const formatted = (questions || []).map(q => ({
+            id: q.id,
+            tool_id: q.tool_id,
+            question_text: q.question_text,
+            dimension: q.dimension,
+            options_type: q.question_type || 'likert',
+            options: buildOptionsFromRow(q)
+        }));
+        res.json({ success: true, questions: formatted, total: formatted.length });
+    });
+});
+
+// 将数据库行转换为选项列表
+function buildOptionsFromRow(q) {
+    var opts = [];
+    if (q.option_a) opts.push({ value: q.score_a || 1, label: q.option_a });
+    if (q.option_b) opts.push({ value: q.score_b || 2, label: q.option_b });
+    if (q.option_c) opts.push({ value: q.score_c || 3, label: q.option_c });
+    if (q.option_d) opts.push({ value: q.score_d || 4, label: q.option_d });
+    if (opts.length === 0) {
+        opts = [
+            { value: 1, label: '完全不符合' },
+            { value: 2, label: '不太符合' },
+            { value: 3, label: '一般' },
+            { value: 4, label: '比较符合' },
+            { value: 5, label: '非常符合' }
+        ];
+    }
+    return opts;
+}
+
+// ========== 测评项目管理 ==========
+app.post('/api/projects', auth, (req, res) => {
+    const { projectName, projectType, description } = req.body;
+    if (!projectName) {
+        return res.json({ success: false, message: '项目名称不能为空' });
+    }
+
+    const userId = req.user.userId || 1;
+
+    db.run(
+        `INSERT INTO assessment_projects (project_name, project_type, description, created_by, created_at)
+         VALUES (?, ?, ?, ?, datetime('now'))`,
+        [projectName, projectType || 'RECRUITMENT', description || '', userId],
+        function (err) {
+            if (err) return res.json({ success: false, message: '创建失败: ' + err.message });
+            res.json({
+                success: true,
+                projectId: this.lastID,
+                message: '项目创建成功'
+            });
+        }
+    );
+});
+
+app.get('/api/projects', auth, (req, res) => {
+    db.all('SELECT * FROM assessment_projects ORDER BY created_at DESC', [], (err, projects) => {
+        if (err) return res.json({ success: false, message: err.message });
+        res.json({ success: true, projects: projects || [] });
+    });
+});
+
+// ========== 用户管理 ==========
+// 获取用户详情
+app.get('/api/users/:id', auth, (req, res) => {
+    const userId = req.params.id;
+    db.get('SELECT id, username, real_name, email, phone, position FROM users WHERE id = ?', [userId], (err, user) => {
+        if (err) return res.json({ success: false, message: err.message });
+        if (!user) return res.json({ success: false, message: '用户不存在' });
+        res.json({ success: true, user });
+    });
+});
+
+app.delete('/api/projects/:id', auth, (req, res) => {
+    const projectId = req.params.id;
+    db.run('DELETE FROM assessment_projects WHERE id = ?', [projectId], function (err) {
+        if (err) return res.json({ success: false, message: '删除失败: ' + err.message });
+        if (this.changes === 0) return res.json({ success: false, message: '项目不存在' });
+        res.json({ success: true, message: '删除成功' });
+    });
+});
+
+// ========== 测评任务管理 ==========
+app.post('/api/tasks', auth, (req, res) => {
+    const { taskName, projectId, toolId, assigneeId } = req.body;
+    if (!taskName || !projectId || !toolId) {
+        return res.json({ success: false, message: '缺少必要参数' });
+    }
+
+    db.run(
+        `INSERT INTO assessment_tasks (task_name, project_id, tool_id, assignee_id, status, created_at)
+         VALUES (?, ?, ?, ?, 'pending', datetime('now'))`,
+        [taskName, projectId, toolId, assigneeId],
+        function (err) {
+            if (err) return res.json({ success: false, message: '创建任务失败: ' + err.message });
+            res.json({ success: true, taskId: this.lastID, message: '任务创建成功' });
+        }
+    );
+});
+
+app.get('/api/tasks', auth, (req, res) => {
+    db.all(`SELECT t.*, p.project_name as project_name, tool.tool_name as tool_name
+            FROM assessment_tasks t
+            LEFT JOIN assessment_projects p ON t.project_id = p.id
+            LEFT JOIN assessment_tools tool ON t.tool_id = tool.id
+            ORDER BY t.created_at DESC`, [], (err, tasks) => {
+        if (err) return res.json({ success: false, message: err.message });
+        res.json({ success: true, tasks: tasks || [] });
+    });
+});
+
+app.put('/api/tasks/:id/status', auth, (req, res) => {
+    const { status } = req.body;
+    if (!status) return res.json({ success: false, message: '状态不能为空' });
+
+    let extraFields = '';
+    let params = [status, req.params.id];
+    if (status === 'completed') {
+        extraFields = ', completed_at = datetime(\'now\')';
+    }
+
+    db.run('UPDATE assessment_tasks SET status = ?' + extraFields + ' WHERE id = ?', params, function (err) {
+        if (err) return res.json({ success: false, message: err.message });
+        res.json({ success: true, message: '状态更新成功' });
+    });
+});
+
+// ========== 提交测评答案 ==========
+app.post('/api/assessment/submit', auth, (req, res) => {
+    const { taskId, answers, toolId } = req.body;
+
+    if (!answers || answers.length === 0) {
+        return res.json({ success: false, message: '答案不能为空' });
+    }
+
+    // 计算分数和专业报告
+    const score = calculateScore(toolId, answers);
+    const reportData = generateReportSummary(toolId, answers);
+    const answerJson = JSON.stringify(answers);
+    // 使用报告数据中的维度分数（更准确）
+    const dimensionJson = JSON.stringify(reportData.dimensions || {});
+    const totalScore = reportData.overallScore || reportData.totalScore || 0;
+    const reportJson = JSON.stringify(reportData);
+
+    db.run(
+        `INSERT INTO assessment_results (task_id, user_id, tool_id, answers, total_score, dimension_scores, report_data, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1, datetime('now'))`,
+        [taskId || null, req.user.userId, toolId, answerJson, totalScore, dimensionJson, reportJson],
+        function (err) {
+            if (err) return res.json({ success: false, message: '保存失败: ' + err.message });
+
+            // 更新任务状态
+            if (taskId) {
+                db.run("UPDATE assessment_tasks SET status = 'completed', completed_at = datetime('now') WHERE id = ?", [taskId]);
+            }
+
+            res.json({
+                success: true,
+                resultId: this.lastID,
+                score: score,
+                report: reportData,
+                message: '提交成功'
+            });
+        }
+    );
+});
+
+// ========== 测评报告 ==========
+app.get('/api/reports', auth, (req, res) => {
+    db.all('SELECT * FROM assessment_reports ORDER BY created_at DESC', [], (err, reports) => {
+        if (err) return res.json({ success: false, message: err.message });
+        res.json({ success: true, reports: reports || [] });
+    });
+});
+
+app.get('/api/reports/task/:taskId', auth, (req, res) => {
+    const taskId = req.params.taskId;
+    db.get('SELECT * FROM assessment_reports WHERE task_id = ?', [taskId], (err, report) => {
+        if (err) return res.json({ success: false, message: err.message });
+        if (!report) return res.json({ success: false, message: '报告不存在' });
+        res.json({ success: true, report: report });
+    });
+});
+
+// ========== 用户管理 ==========
+app.get('/api/users', auth, (req, res) => {
+    db.all('SELECT id, username, real_name, position, status, created_at FROM users ORDER BY id', [], (err, users) => {
+        if (err) return res.json({ success: false, message: err.message });
+        res.json({ success: true, users: users || [] });
+    });
+});
+
+app.post('/api/users', auth, (req, res) => {
+    const { username, password, realName, role } = req.body;
+    if (!username || !password) {
+        return res.json({ success: false, message: '用户名和密码不能为空' });
+    }
+
+    const hash = bcrypt.hashSync(password, 10);
+    db.run(
+        "INSERT INTO users (username, password_hash, real_name, role, status, created_at) VALUES (?, ?, ?, ?, 1, datetime('now'))",
+        [username, hash, realName || '', role || 'user'],
+        function (err) {
+            if (err) return res.json({ success: false, message: err.message });
+            res.json({ success: true, userId: this.lastID, message: '用户创建成功' });
+        }
+    );
+});
+
+// ========== 统计数据 ==========
+app.get('/api/dashboard/stats', auth, (req, res) => {
+    db.get('SELECT COUNT(*) as cnt FROM assessment_tools', [], (err, row1) => {
+        db.get('SELECT COUNT(*) as cnt FROM assessment_projects', [], (err2, row2) => {
+            db.get('SELECT COUNT(*) as cnt FROM assessment_tasks', [], (err3, row3) => {
+                db.get("SELECT COUNT(*) as cnt FROM assessment_tasks WHERE status = 'completed'", [], (err4, row4) => {
+                    const totalTasks = (row3 && row3.cnt) || 0;
+                    const completedTasks = (row4 && row4.cnt) || 0;
+                    res.json({
+                        success: true,
+                        stats: {
+                            toolCount: (row1 && row1.cnt) || 7,
+                            projectCount: (row2 && row2.cnt) || 0,
+                            taskCount: totalTasks,
+                            completionRate: totalTasks > 0 ? Math.round(completedTasks / totalTasks * 100) : 0
+                        }
+                    });
+                });
+            });
+        });
+    });
+});
+
+// ========== 默认题目数据 ==========
+function getDefaultQuestions(toolId) {
+    const questionBank = {
+        1: [ // 大五人格 - 简化版12题示例
+            { id: 1, tool_id: 1, question_text: '我是一个充满活力的人', dimension: 'E', reverse: false, options_type: 'likert_5' },
+            { id: 2, tool_id: 1, question_text: '我喜欢尝试新鲜事物', dimension: 'O', reverse: false, options_type: 'likert_5' },
+            { id: 3, tool_id: 1, question_text: '我会把事情安排得井井有条', dimension: 'C', reverse: false, options_type: 'likert_5' },
+            { id: 4, tool_id: 1, question_text: '我容易与他人建立信任关系', dimension: 'A', reverse: false, options_type: 'likert_5' },
+            { id: 5, tool_id: 1, question_text: '面对压力我能保持冷静', dimension: 'N_rev', reverse: true, options_type: 'likert_5' },
+            { id: 6, tool_id: 1, question_text: '我倾向于主导团队讨论', dimension: 'E', reverse: false, options_type: 'likert_5' },
+            { id: 7, tool_id: 1, question_text: '我对艺术和美感很敏感', dimension: 'O', reverse: false, options_type: 'likert_5' },
+            { id: 8, tool_id: 1, question_text: '我会仔细检查工作中的细节', dimension: 'C', reverse: false, options_type: 'likert_5' },
+            { id: 9, tool_id: 1, question_text: '我会主动帮助遇到困难的人', dimension: 'A', reverse: false, options_type: 'likert_5' },
+            { id: 10, tool_id: 1, question_text: '我经常感到焦虑或不安', dimension: 'N', reverse: false, options_type: 'likert_5' },
+            { id: 11, tool_id: 1, question_text: '我在社交场合中比较活跃', dimension: 'E', reverse: false, options_type: 'likert_5' },
+            { id: 12, tool_id: 1, question_text: '我对抽象概念和理论感兴趣', dimension: 'O', reverse: false, options_type: 'likert_5' }
+        ],
+        2: [ // MBTI - 简化版
+            { id: 13, tool_id: 2, question_text: '在社交聚会中，我更倾向于与少数人深入交谈', dimension: 'I', options_type: 'choice_ab' },
+            { id: 14, tool_id: 2, question_text: '我做决定时更多依赖逻辑分析而非情感感受', dimension: 'T', options_type: 'choice_ab' },
+            { id: 15, tool_id: 2, question_text: '我更喜欢有计划的生活方式', dimension: 'J', options_type: 'choice_ab' },
+            { id: 16, tool_id: 2, question_text: '我更关注具体的事实而非抽象的可能性', dimension: 'S', options_type: 'choice_ab' },
+            { id: 17, tool_id: 2, question_text: '我从外部世界获得能量', dimension: 'E', options_type: 'choice_ab' },
+            { id: 18, tool_id: 2, question_text: '做决定时我会考虑对他人的影响', dimension: 'F', options_type: 'choice_ab' },
+            { id: 19, tool_id: 2, question_text: '我更喜欢灵活随性的生活方式', dimension: 'P', options_type: 'choice_ab' },
+            { id: 20, tool_id: 2, question_text: '我更关注未来的可能性和潜在的含义', dimension: 'N', options_type: 'choice_ab' }
+        ],
+        3: [ // DISC
+            { id: 21, tool_id: 3, question_text: '在团队中，我倾向于直接表达观点并推动决策', dimension: 'D', options_type: 'choice_most_least' },
+            { id: 22, tool_id: 3, question_text: '我善于激励他人并营造积极的氛围', dimension: 'I', options_type: 'choice_most_least' },
+            { id: 23, tool_id: 3, question_text: '我是很好的倾听者，善于维护团队和谐', dimension: 'S', options_type: 'choice_most_least' },
+            { id: 24, tool_id: 3, question_text: '我注重细节和准确性，做事谨慎周全', dimension: 'C', options_type: 'choice_most_least' }
+        ]
+    };
+
+    return questionBank[toolId] || [
+        { id: 99, tool_id: toolId, question_text: '这是一个示例题目（该工具暂无完整题库）', dimension: 'default', options_type: 'liket_5' }
+    ];
+}
+
+// ========== 分数计算（简化版）==========
+function calculateScore(toolId, answers) {
+    if (!answers || answers.length === 0) return { totalScore: 0, dimensions: {} };
+
+    const dimensions = {};
+    let totalScore = 0;
+
+    answers.forEach(a => {
+        const val = a.answer || a.value || a.score || 0;
+        const dim = a.dimension || 'default';
+        if (!dimensions[dim]) dimensions[dim] = { sum: 0, count: 0 };
+        dimensions[dim].sum += val;
+        dimensions[dim].count += 1;
+        totalScore += val;
+    });
+
+    // 计算各维度平均分（1-5分制）
+    const dimensionAvg = {};
+    let dimCount = 0;
+    for (const [dim, data] of Object.entries(dimensions)) {
+        dimensionAvg[dim] = Math.round((data.sum / data.count) * 10) / 10;
+        dimCount++;
+    }
+
+    const avgTotal = dimCount > 0 ? Math.round((totalScore / answers.length) * 10) / 10 : 0;
+
+    return {
+        totalScore: avgTotal,
+        dimensions: dimensionAvg,
+        rawDimensions: dimensions,
+        answerCount: answers.length
+    };
+}
+
+// ========== 测评答题页面所需API ==========
+
+// GET /api/questions/:toolId - 获取某工具的全部题目（兼容旧路径）
+app.get('/api/questions/:toolId', auth, (req, res) => {
+    const toolId = req.params.toolId;
+    db.all('SELECT * FROM questions WHERE tool_id = ? ORDER BY order_num', [toolId], (err, questions) => {
+        if (err) return res.json({ success: false, message: err.message });
+        if (!questions || questions.length === 0) {
+            const defaultQs = getDefaultQuestions(parseInt(toolId));
+            // 给默认题目也加上options
+            const withOpts = defaultQs.map(q => ({
+                id: q.id,
+                question: q.question_text || q.question || '示例题目',
+                dimension: q.dimension || 'default',
+                options: getOptionsForType(q.options_type || 'likert_5')
+            }));
+            return res.json({ success: true, questions: withOpts });
+        }
+        // 转换为前端需要的格式：question + options
+        const formatted = (questions || []).map(q => ({
+            id: q.id,
+            question: q.question_text || '题目',
+            dimension: q.dimension || 'default',
+            options: buildOptionsFromRow(q)
+        }));
+        res.json({ success: true, questions: formatted });
+    });
+});
+
+// GET /api/assessment-form/:taskId - 通过任务ID加载测评表单
+app.get('/api/assessment-form/:taskId', auth, (req, res) => {
+    const taskId = req.params.taskId;
+    
+    // 查询任务信息
+    db.get(`SELECT t.*, p.project_name, at.tool_name, at.description as tool_description 
+            FROM assessment_tasks t
+            LEFT JOIN assessment_projects p ON t.project_id = p.id
+            LEFT JOIN assessment_tools at ON t.tool_id = at.id
+            WHERE t.id = ?`, [taskId], (err, task) => {
+        if (err) return res.json({ success: false, message: err.message });
+        if (!task) return res.json({ success: false, message: '任务不存在' });
+
+        // 查询该工具的题目（使用正确的表名 questions）
+        const toolId = task.tool_id;
+        db.all('SELECT * FROM questions WHERE tool_id = ? ORDER BY order_num', [toolId], (err2, questions) => {
+            let finalQuestions;
+            if (!questions || questions.length === 0) {
+                finalQuestions = getDefaultQuestions(parseInt(toolId));
+            } else {
+                finalQuestions = questions;
+            }
+
+            // 格式化题目
+            const formatted = (finalQuestions || []).map((q, idx) => ({
+                id: q.id || (100000 + idx),
+                question: q.question_text || q.question || '示例题目',
+                dimension: q.dimension || 'default',
+                options: (q.options_type && q.option_a) ? buildOptionsFromRow(q) : getOptionsForType(q.options_type || q.type || 'likert_5')
+            }));
+
+            res.json({
+                success: true,
+                task: {
+                    id: task.id,
+                    project_name: task.project_name || '未命名项目',
+                    tool_name: task.tool_name || '测评',
+                    tool_description: task.tool_description || ''
+                },
+                questions: formatted
+            });
+        });
+    });
+});
+
+// POST /api/submit-assessment/:taskId - 提交测评答案
+app.post('/api/submit-assessment/:taskId', auth, (req, res) => {
+    const taskId = req.params.taskId;
+    const { answers, timeSpent } = req.body;
+
+    if (!answers || answers.length === 0) {
+        return res.json({ success: false, message: '请完成所有题目后再提交' });
+    }
+
+    // 先查任务获取toolId
+    db.get('SELECT tool_id FROM assessment_tasks WHERE id = ?', [taskId], (err, task) => {
+        if (err || !task) return res.json({ success: false, message: '任务不存在' });
+
+        const answerJson = JSON.stringify(answers);
+        
+        db.run(
+            `INSERT INTO assessment_results (task_id, user_id, tool_id, answers, created_at)
+             VALUES (?, ?, ?, ?, datetime('now'))`,
+            [taskId, req.user.userId, task.tool_id, answerJson],
+            function (err) {
+                if (err) return res.json({ success: false, message: '提交失败: ' + err.message });
+
+                // 更新任务状态为已完成
+                db.run("UPDATE assessment_tasks SET status = 'completed', completed_at = datetime('now') WHERE id = ?", [taskId]);
+
+                // 计算分数
+                const score = calculateScore(task.tool_id, answers);
+
+                // 生成报告摘要
+                const reportSummary = generateReportSummary(task.tool_id, answers);
+
+                res.json({
+                    success: true,
+                    resultId: this.lastID,
+                    score: score,
+                    summary: reportSummary,
+                    message: '测评提交成功！'
+                });
+            }
+        );
+    });
+});
+
+// 根据题型返回选项列表
+function getOptionsForType(type) {
+    const optionMap = {
+        likert_5: [
+            { value: 1, label: '完全不符合' },
+            { value: 2, label: '不太符合' },
+            { value: 3, label: '一般/不确定' },
+            { value: 4, label: '比较符合' },
+            { value: 5, label: '非常符合' }
+        ],
+        choice_ab: [
+            { value: 'A', label: '是 / 同意' },
+            { value: 'B', label: '否 / 不同意' }
+        ],
+        choice_most_least: [
+            { value: 4, label: '最符合' },
+            { value: 3, label: '比较符合' },
+            { value: 2, label: '不太符合' },
+            { value: 1, label: '最不符合' }
+        ]
+    };
+    return optionMap[type] || optionMap['likert_5'];
+}
+
+// 生成报告摘要
+function generateReportSummary(toolId, answers) {
+    // 各工具的专业报告生成
+    const reportGenerators = {
+        // ========== 1. 大五人格（OCEAN）==========
+        1: function(answers) {
+            const scores = { '开放性': 0, '尽责性': 0, '外向性': 0, '宜人性': 0, '情绪稳定性': 0 };
+            const counts = { '开放性': 0, '尽责性': 0, '外向性': 0, '宜人性': 0, '情绪稳定性': 0 };
+            answers.forEach(a => {
+                const dim = a.dimension || '开放性';
+                const val = a.answer || 0;
+                if (scores[dim] !== undefined) { scores[dim] += val; counts[dim]++; }
+            });
+            const avg = {};
+            for (const [k, v] of Object.entries(scores)) {
+                avg[k] = counts[k] > 0 ? Math.round(v / counts[k] * 10) / 10 : 3;
+            }
+            const maxDim = Object.entries(avg).sort((a,b) => b[1] - a[1])[0];
+            const minDim = Object.entries(avg).sort((a,b) => a[1] - b[1])[0];
+
+            // 百分位估算（基于常模）
+            const percentiles = {};
+            for (const [k, v] of Object.entries(avg)) {
+                percentiles[k] = Math.min(99, Math.max(1, Math.round((v - 1) / 4 * 100)));
+            }
+
+            return {
+                toolName: '大五人格测评',
+                overallScore: Math.round(Object.values(avg).reduce((a,b)=>a+b,0) / 5 * 10) / 10,
+                dimensions: avg,
+                percentiles: percentiles,
+                maxDimension: maxDim[0],
+                maxScore: maxDim[1],
+                minDimension: minDim[0],
+                minScore: minDim[1],
+                summary: `本次测评显示，您在${maxDim[0]}维度得分最高（${maxDim[1]}分），表明${getBigFiveDesc(maxDim[0], maxDim[1])}；在${minDim[0]}维度得分相对较低（${minDim[1]}分），建议${getBigFiveSuggestion(minDim[0], minDim[1])}。整体性格特征偏向${avg['外向性']>=3 ? '外向' : '内向'}-${avg['情绪稳定性']>=3 ? '情绪稳定' : '情绪敏感'}型。`,
+                strengths: getBigFiveStrengths(avg),
+                weaknesses: getBigFiveWeaknesses(avg),
+                suggestions: getBigFiveSuggestions(avg),
+                jobMatch: getBigFiveJobMatch(avg),
+                interviewQuestions: getBigFiveInterviewQuestions(avg)
+            };
+        },
+
+        // ========== 2. MBTI ==========
+        2: function(answers) {
+            let E = 0, I = 0, S = 0, N = 0, T = 0, F = 0, J = 0, P = 0;
+            answers.forEach(a => {
+                const val = a.answer || 0;
+                const dim = a.dimension || '';
+                if (dim === 'E/I') { if (val >= 3) E += val; else I += (6 - val); }
+                if (dim === 'S/N') { if (val >= 3) S += val; else N += (6 - val); }
+                if (dim === 'T/F') { if (val >= 3) T += val; else F += (6 - val); }
+                if (dim === 'J/P') { if (val >= 3) J += val; else P += (6 - val); }
+            });
+            const type = (E >= I ? 'E' : 'I') + (S >= N ? 'S' : 'N') + (T >= F ? 'T' : 'F') + (J >= P ? 'J' : 'P');
+            const typeDescriptions = {
+                'INTJ': { title: '建筑师', desc: '具有创造性思维，喜欢理论和抽象概念，独立性强，有高标准。适合战略规划和系统设计工作。', careers: ['系统架构师', '战略顾问', '数据分析师', '产品经理'] },
+                'INTP': { title: '逻辑学家', desc: '喜欢理论和分析，思维灵活，好奇心强，适合研发和创新工作。', careers: ['软件工程师', '研究员', '产品经理', '数据分析师'] },
+                'ENTJ': { title: '指挥官', desc: '天生的领导者，果断，有战略眼光，适合管理和决策角色。', careers: ['项目经理', '部门总监', '创始人', '管理顾问'] },
+                'ENTP': { title: '辩论家', desc: '聪明、思维敏捷，喜欢智力挑战，适合创新和创业。', careers: ['产品经理', '创业者', '市场策划', '咨询顾问'] },
+                'INFJ': { title: '提倡者', desc: '有理想主义倾向，关心他人，有洞察力，适合帮助他人实现潜力的工作。', careers: ['HRBP', '心理咨询师', '用户体验研究员', '组织发展专员'] },
+                'INFP': { title: '调停者', desc: '理想主义，忠诚于自己的价值观，喜欢帮助他人，适合创造性工作。', careers: ['内容策划', '用户研究员', '培训师', '文案'] },
+                'ENFJ': { title: '主人公', desc: '天生的领导者，有魅力，善于激励他人，适合管理和培训工作。', careers: ['HRBP', '培训经理', '市场总监', '项目经理'] },
+                'ENFP': { title: '竞选者', desc: '热情、创造力强，善于与人交往，适合需要创新和社交的工作。', careers: ['市场策划', '用户增长', '活动策划', '销售'] },
+                'ISTJ': { title: '物流师', desc: '务实、负责，喜欢有序和结构化，适合需要准确性和细节的工作。', careers: ['财务分析师', '运营专员', '质量保证', '数据分析师'] },
+                'ISFJ': { title: '守护者', desc: '温暖、负责，善于照顾他人，适合服务和支持性工作。', careers: ['客户成功', '行政助理', 'HR专员', '质量保证'] },
+                'ESTJ': { title: '总经理', desc: '有组织能力，务实，喜欢传统和秩序，适合管理和运营工作。', careers: ['运营经理', '项目经理', '财务经理', '供应链经理'] },
+                'ESFJ': { title: '执政官', desc: '关心他人，合作性强，喜欢和谐，适合服务和教育工作。', careers: ['HR专员', '客户成功', '培训师', '活动策划'] },
+                'ISTP': { title: '鉴赏家', desc: '冷静、分析力强，喜欢技术和机械，适合技术操作工作。', careers: ['技术支持', '系统运维', '数据分析师', '质量保证'] },
+                'ISFP': { title: '探险家', desc: '温和、敏感，喜欢美学和和谐，适合创意和辅助工作。', careers: ['UI设计师', '用户体验', '内容运营', '客户成功'] },
+                'ESTP': { title: '企业家', desc: '观察力强，行动派，喜欢风险和刺激，适合销售和创业。', careers: ['销售经理', '客户经理', '市场推广', '创业者'] },
+                'ESFP': { title: '表演者', desc: '热情、爱社交，喜欢成为关注焦点，适合展示和娱乐工作。', careers: ['市场推广', '活动策划', '客户关系', '培训师'] }
+            };
+            const td = typeDescriptions[type] || typeDescriptions['INTJ'];
+            return {
+                toolName: 'MBTI职业性格测评',
+                type: type,
+                typeTitle: td.title,
+                typeDesc: td.desc,
+                typeScores: { E: Math.round(E/(E+I)*100)||50, I: Math.round(I/(E+I)*100)||50, S: Math.round(S/(S+N)*100)||50, N: Math.round(N/(S+N)*100)||50, T: Math.round(T/(T+F)*100)||50, F: Math.round(F/(T+F)*100)||50, J: Math.round(J/(J+P)*100)||50, P: Math.round(P/(J+P)*100)||50 },
+                careers: td.careers,
+                summary: `您的MBTI类型为 ${type}（${td.title}）。${td.desc}。在团队中，您倾向于${type[0]==='E' ? '主动表达观点、推动讨论' : '深入思考、倾听他人'}，决策时${type[2]==='T' ? '更多依赖逻辑分析' : '更多考虑人的感受'}。`,
+                strengths: getTypeStrengths(type),
+                workStyle: getTypeWorkStyle(type),
+                communicationStyle: getTypeCommStyle(type),
+                stressReaction: getTypeStress(type),
+                developmentSuggestions: getTypeDevelopment(type)
+            };
+        },
+
+        // ========== 3. DISC ==========
+        3: function(answers) {
+            const scores = { D: 0, I: 0, S: 0, C: 0 };
+            const counts = { D: 0, I: 0, S: 0, C: 0 };
+            answers.forEach(a => {
+                const dim = a.dimension || 'D';
+                const val = a.answer || 0;
+                if (scores[dim] !== undefined) { scores[dim] += val; counts[dim]++; }
+            });
+            const avg = {};
+            let maxK = 'D', maxV = 0;
+            for (const [k, v] of Object.entries(scores)) {
+                avg[k] = counts[k] > 0 ? Math.round(v / counts[k] * 10) / 10 : 3;
+                if (avg[k] > maxV) { maxV = avg[k]; maxK = k; }
+            }
+            const discDesc = { D: '支配型（Dominance）：结果导向，直接果断，喜欢掌控', I: '影响型（Influence）：人际导向，热情乐观，善于说服', S: '稳健型（Steadiness）：关系导向，耐心合作，善于支持', C: '遵从型（Conscientiousness）：任务导向，谨慎准确，善于分析' };
+            return {
+                toolName: 'DISC行为风格测评',
+                dimensions: avg,
+                dominantStyle: maxK,
+                dominantDesc: discDesc[maxK],
+                summary: `您的主导行为风格是 ${maxK}型（${discDesc[maxK].split('（')[0]}）。${discDesc[maxK]}。在团队中，您${maxK==='D' ? '倾向于快速决策、推动结果' : maxK==='I' ? '倾向于激励他人、营造氛围' : maxK==='S' ? '倾向于维护和谐、支持队友' : '倾向于仔细分析、确保质量'}。`,
+                strengths: getDISCStrengths(avg),
+                communicationTips: getDISCCommTips(avg),
+                stressReaction: getDISCStress(avg),
+                managementStyle: getDISCMgmt(avg),
+                teamRole: getDISCTeamRole(avg)
+            };
+        },
+
+        // ========== 4. 霍兰德 ==========
+        4: function(answers) {
+            const scores = { R: 0, I: 0, A: 0, S: 0, E: 0, C: 0 };
+            const counts = { R: 0, I: 0, A: 0, S: 0, E: 0, C: 0 };
+            const dimNames = { R: '现实型', I: '研究型', A: '艺术型', S: '社会型', E: '企业型', C: '常规型' };
+            answers.forEach(a => {
+                const dim = a.dimension || 'R';
+                const val = a.answer || 0;
+                if (scores[dim] !== undefined) { scores[dim] += val; counts[dim]++; }
+            });
+            const avg = {};
+            const sorted = [];
+            for (const [k, v] of Object.entries(scores)) {
+                avg[k] = counts[k] > 0 ? Math.round(v / counts[k] * 10) / 10 : 3;
+                sorted.push([k, avg[k]]);
+            }
+            sorted.sort((a,b) => b[1] - a[1]);
+            const top3 = sorted.slice(0, 3).map(x => x[0]).join('');
+            const hollandCareers = {
+                'RIA': ['机械工程师', '电子工程师', '技术员'],
+                'AIS': ['设计师', '艺术指导', '创意总监'],
+                'SEC': ['行政助理', '财务分析师', '运营专员'],
+                'EIR': ['销售经理', '市场总监', '创业者'],
+                'SAI': ['HRBP', '培训师', '心理咨询师'],
+                'CRI': ['数据分析师', '质量保证', '系统运维']
+            };
+            return {
+                toolName: '霍兰德职业兴趣测评',
+                dimensions: avg,
+                hollandCode: top3,
+                dimensionNames: top3.split('').map(x => dimNames[x]).join('-'),
+                summary: `您的霍兰德兴趣代码为 ${top3}（${top3.split('').map(x => dimNames[x]).join('-')}）。这表明您${getHollandDesc(top3)}。在选择职业时，建议优先考虑与您的兴趣类型相匹配的工作环境。`,
+                careerSuggestions: hollandCareers[top3] || ['行政专员', '项目经理', '运营专员', '客户成功'],
+                workEnvironment: getHollandEnv(top3),
+                strengths: getHollandStrengths(avg),
+                limitations: getHollandLimitations(avg)
+            };
+        },
+
+        // ========== 5. 情商EQ ==========
+        5: function(answers) {
+            const scores = { '自我意识': 0, '自我调节': 0, '内在激励': 0, '同理心': 0, '社交技能': 0 };
+            const counts = { '自我意识': 0, '自我调节': 0, '内在激励': 0, '同理心': 0, '社交技能': 0 };
+            answers.forEach(a => {
+                const dim = a.dimension || '自我意识';
+                const val = a.answer || 0;
+                if (scores[dim] !== undefined) { scores[dim] += val; counts[dim]++; }
+            });
+            const avg = {};
+            for (const [k, v] of Object.entries(scores)) {
+                avg[k] = counts[k] > 0 ? Math.round(v / counts[k] * 10) / 10 : 3;
+            }
+            const total = Math.round(Object.values(avg).reduce((a,b)=>a+b,0) / 5 * 10) / 10;
+            let eqLevel = '中等';
+            if (total >= 4.2) eqLevel = '优秀';
+            else if (total >= 3.5) eqLevel = '良好';
+            else if (total < 2.5) eqLevel = '待提升';
+            return {
+                toolName: '情商（EQ）测评',
+                dimensions: avg,
+                totalScore: total,
+                eqLevel: eqLevel,
+                summary: `您的情商总分为 ${total}分，处于「${eqLevel}」水平。${avg['同理心']>=3.5 ? '您具有较强的同理心，能理解他人感受' : '建议在同理心方面加强锻炼'}；${avg['自我调节']>=3.5 ? '情绪自我调节能力较好，能在压力下保持冷静' : '建议学习情绪管理技巧'}。情商对${avg['社交技能']>=3.5 ? '社交和团队合作有积极影响' : '需要提升社交技能以更好地融入团队'}。`,
+                strengths: getEQStrengths(avg),
+                improvements: getEQImprovements(avg),
+                leadershipPotential: getEQLeadership(avg),
+                stressManagement: getEQStress(avg)
+            };
+        },
+
+        // ========== 6. 工作动机 ==========
+        6: function(answers) {
+            const scores = {};
+            const counts = {};
+            answers.forEach(a => {
+                const dim = a.dimension || '成就动机';
+                const val = a.answer || 0;
+                if (!scores[dim]) scores[dim] = 0, counts[dim] = 0;
+                scores[dim] += val; counts[dim]++;
+            });
+            const avg = {};
+            for (const [k, v] of Object.entries(scores)) {
+                avg[k] = counts[k] > 0 ? Math.round(v / counts[k] * 10) / 10 : 3;
+            }
+            const sorted = Object.entries(avg).sort((a,b) => b[1] - a[1]);
+            return {
+                toolName: '工作动机测评',
+                dimensions: avg,
+                topMotivations: sorted.slice(0, 3).map(x => x[0]),
+                summary: `您最核心的工作动机是「${sorted[0][0]}」（${sorted[0][1]}分），这表明${getMotivationDesc(sorted[0][0])}。在管理您时，应重点关注这些激励因素，以最大化您的工作投入和满意度。`,
+                incentives: getMotivationIncentives(avg),
+                managementTips: getMotivationMgmt(avg),
+                careerFit: getMotivationCareerFit(avg)
+            };
+        },
+
+        // ========== 7. 工作价值观 ==========
+        7: function(answers) {
+            const scores = {};
+            const counts = {};
+            answers.forEach(a => {
+                const dim = a.dimension || '薪酬福利';
+                const val = a.answer || 0;
+                if (!scores[dim]) scores[dim] = 0, counts[dim] = 0;
+                scores[dim] += val; counts[dim]++;
+            });
+            const avg = {};
+            for (const [k, v] of Object.entries(scores)) {
+                avg[k] = counts[k] > 0 ? Math.round(v / counts[k] * 10) / 10 : 3;
+            }
+            const sorted = Object.entries(avg).sort((a,b) => b[1] - a[1]);
+            return {
+                toolName: '工作价值观测评',
+                dimensions: avg,
+                topValues: sorted.slice(0, 3).map(x => x[0]),
+                summary: `您最看重的工作价值观是「${sorted[0][0]}」（${sorted[0][1]}分）。在选择工作时，建议优先考虑能够满足您核心价值观的组织和环境。${getValuesDesc(sorted[0][0])}。`,
+                organizationFit: getValuesOrgFit(avg),
+                careerSuggestions: getValuesCareer(avg),
+                workLifeBalance: avg['工作生活平衡'] || 3
+            };
+        }
+    };
+
+    const generator = reportGenerators[toolId];
+    if (generator) return generator(answers);
+    return { toolName: '测评', summary: '测评已完成，报告已生成。', dimensions: {} };
+}
+
+// ========== 大五人格辅助函数 ==========
+function getBigFiveDesc(dim, score) {
+    const descs = { '开放性': score>=4?'您思维开放，喜欢创新和新鲜事物':'您比较务实，偏好熟悉的环境', '尽责性': score>=4?'您做事有条理，责任心强':'您比较随性，需要注意细节管理', '外向性': score>=4?'您精力充沛，善于社交':'您更喜欢独处和深度思考', '宜人性': score>=4?'您乐于合作，善于建立关系':'您比较独立，需要平衡合作与自主', '情绪稳定性': score>=4?'您情绪稳定，抗压能力强':'您比较敏感，需要情绪管理支持' };
+    return descs[dim] || '';
+}
+function getBigFiveSuggestion(dim, score) {
+    const sug = { '开放性': '多尝试新事物，拓展视野', '尽责性': '建立任务清单，提升执行力', '外向性': '适当参与团队活动，提升影响力', '宜人性': '学习冲突管理，平衡合作与原则', '情绪稳定性': '练习正念和情绪调节技巧' };
+    return sug[dim] || '';
+}
+function getBigFiveStrengths(avg) {
+    const s = [];
+    for (const [k,v] of Object.entries(avg)) { if (v >= 3.5) s.push(`【${k}】${v}分，表现优秀`); }
+    return s.length > 0 ? s : ['各维度发展较均衡'];
+}
+function getBigFiveWeaknesses(avg) {
+    const w = [];
+    for (const [k,v] of Object.entries(avg)) { if (v < 3) w.push(`【${k}】${v}分，有提升空间`); }
+    return w.length > 0 ? w : ['各维度发展均衡，无明显短板'];
+}
+function getBigFiveSuggestions(avg) {
+    const sug = [];
+    if (avg['开放性'] < 3) sug.push('建议多参与创新项目，拓展知识边界');
+    if (avg['尽责性'] < 3) sug.push('建议使用任务管理工具，提升执行力');
+    if (avg['外向性'] < 2.5) sug.push('建议适当参与团队建设，提升影响力');
+    if (avg['宜人性'] < 3) sug.push('建议学习积极沟通技巧，提升协作效果');
+    if (avg['情绪稳定性'] < 3) sug.push('建议学习压力管理技巧，提升情绪韧性');
+    return sug.length > 0 ? sug : ['整体性格均衡，建议保持现有优势'];
+}
+function getBigFiveJobMatch(avg) {
+    const match = [];
+    if (avg['外向性'] >= 3.5 && avg['宜人性'] >= 3.5) match.push('适合：销售、市场、HR、客户成功');
+    if (avg['尽责性'] >= 3.5 && avg['情绪稳定性'] >= 3.5) match.push('适合：项目管理、运营、质量保证');
+    if (avg['开放性'] >= 3.5) match.push('适合：产品、研发、设计、创新岗位');
+    return match.length > 0 ? match : ['适合：综合性岗位，需进一步了解具体兴趣'];
+}
+function getBigFiveInterviewQuestions(avg) {
+    const q = [];
+    if (avg['情绪稳定性'] < 3) q.push('请举例说明您在高压环境下如何保持冷静？');
+    if (avg['尽责性'] < 3) q.push('请描述您如何确保工作质量和按时交付？');
+    if (avg['外向性'] < 3) q.push('请描述您在团队协作中的角色和贡献方式？');
+    return q;
+}
+
+// ========== MBTI辅助函数 ==========
+function getTypeStrengths(type) {
+    const s = { E: '主动表达，推动讨论', I: '深度思考，独立思考', S: '关注细节，务实执行', N: '宏观视野，创新思维', T: '逻辑分析，客观决策', F: '人文关怀，团队和谐', J: '计划有序，按时交付', P: '灵活应变，适应变化' };
+    return [s[type[0]], s[type[1]], s[type[2]], s[type[3]]];
+}
+function getTypeWorkStyle(type) {
+    const ws = { E: '喜欢讨论和头脑风暴，快速行动', I: '喜欢独立工作，深度思考后再表达', S: '按步骤执行，关注眼前任务', N: '关注未来可能性，喜欢创新', T: '基于数据和逻辑做决策', F: '基于价值观和团队感受做决策', J: '喜欢有计划，提前安排', P: '喜欢灵活，保留调整空间' };
+    return `您的工作风格：${ws[type[0]]}；${ws[type[1]]}；${ws[type[2]]}；${ws[type[3]]}。`;
+}
+function getTypeCommStyle(type) {
+    if (type[0]==='E' && type[2]==='F') return '热情表达，善于激励他人，沟通直接';
+    if (type[0]==='I' && type[2]==='T') return '理性表达，喜欢书面沟通，思考后再说';
+    return '沟通风格均衡，能适应不同场景';
+}
+function getTypeStress(type) {
+    if (type[1]==='S' && type[3]==='J') return '压力下倾向于按计划执行，需要清晰的结构';
+    if (type[1]==='N' && type[3]==='P') return '压力下仍能保持灵活，但可能需要更多自主空间';
+    return '压力下表现稳定，能适应变化';
+}
+function getTypeDevelopment(type) {
+    const d = [];
+    if (type[0]==='I') d.push('建议在团队会议中主动发言，提升表达力');
+    if (type[0]==='E') d.push('建议培养深度思考习惯，适当独处反思');
+    if (type[2]==='T') d.push('建议在决策时更多考虑团队成员的感受');
+    if (type[2]==='F') d.push('建议在做决策时更多运用数据和逻辑分析');
+    return d.length > 0 ? d : ['类型发展均衡，建议持续提升自我认知'];
+}
+
+// ========== DISC辅助函数 ==========
+function getDISCStrengths(scores) {
+    const s = [];
+    if (scores['D'] >= 3.5) s.push('结果导向，决策果断');
+    if (scores['I'] >= 3.5) s.push('人际影响力强，善于激励');
+    if (scores['S'] >= 3.5) s.push('团队合作好，善于支持他人');
+    if (scores['C'] >= 3.5) s.push('分析能力强，注重质量');
+    return s;
+}
+function getDISCCommTips(scores) {
+    if (scores['D'] >= 3.5) return '沟通直接，关注结果，避免过多细节';
+    if (scores['I'] >= 3.5) return '沟通热情，善用故事和案例，建立关系';
+    if (scores['S'] >= 3.5) return '沟通温和，善于倾听，需要时间思考';
+    if (scores['C'] >= 3.5) return '沟通精准，提供数据支持，避免模糊';
+    return '沟通风格均衡';
+}
+function getDISCStress(scores) {
+    if (scores['D'] >= 3.5) return '压力下倾向于加快节奏，可能显得急躁';
+    if (scores['S'] >= 3.5) return '压力下倾向于回避冲突，需要支持';
+    return '压力下表现稳定';
+}
+function getDISCMgmt(scores) {
+    if (scores['D'] >= 3.5) return '管理风格：授权结果，减少微管理';
+    if (scores['I'] >= 3.5) return '管理风格：激励团队，营造积极氛围';
+    if (scores['S'] >= 3.5) return '管理风格：支持团队，建立信任关系';
+    if (scores['C'] >= 3.5) return '管理风格：标准清晰，质量优先';
+    return '管理风格均衡';
+}
+function getDISCTeamRole(scores) {
+    const top = Object.entries(scores).sort((a,b)=>b[1]-a[1])[0][0];
+    const roles = { D: '推动者/决策者', I: '激励者/协调者', S: '支持者/维护者', C: '分析者/质量把关者' };
+    return roles[top] || '综合角色';
+}
+
+// ========== 霍兰德辅助函数 ==========
+function getHollandDesc(code) {
+    const descs = { R: '喜欢动手操作和实际任务', I: '喜欢思考分析和理论研究', A: '喜欢创意表达和艺术活动', S: '喜欢帮助他人和服务社会', E: '喜欢影响和领导他人', C: '喜欢有序和数据的工作' };
+    return code.split('').map(x => descs[x]).join('，');
+}
+function getHollandEnv(code) {
+    const envs = { R: '技术/工程环境', I: '研究/实验室环境', A: '创意/艺术环境', S: '教育/服务环境', E: '商业/管理环境', C: '办公室/数据环境' };
+    return code.split('').map(x => envs[x]).join(' 或 ');
+}
+function getHollandStrengths(avg) {
+    const s = [];
+    for (const [k,v] of Object.entries(avg)) { if (v >= 3.5) s.push(`【${k}型】兴趣强烈，适合相关职业`); }
+    return s;
+}
+function getHollandLimitations(avg) {
+    const l = [];
+    for (const [k,v] of Object.entries(avg)) { if (v < 2.5) l.push(`【${k}型】兴趣较低，不建议强制选择相关职业`); }
+    return l;
+}
+
+// ========== 情商辅助函数 ==========
+function getEQStrengths(avg) {
+    const s = [];
+    for (const [k,v] of Object.entries(avg)) { if (v >= 3.5) s.push(`【${k}】${v}分，表现良好`); }
+    return s;
+}
+function getEQImprovements(avg) {
+    const im = [];
+    if (avg['自我意识'] < 3) im.push('提升自我觉察：定期反思情绪触发点');
+    if (avg['自我调节'] < 3) im.push('情绪管理：学习深呼吸、正念等调节技巧');
+    if (avg['同理心'] < 3) im.push('同理心训练：主动询问他人感受，练习倾听');
+    if (avg['社交技能'] < 3) im.push('社交技巧：主动参与团队活动，练习积极反馈');
+    return im;
+}
+function getEQLeadership(avg) {
+    if (avg['同理心'] >= 3.5 && avg['社交技能'] >= 3.5) return '高：善于激励团队，建立信任';
+    if (avg['自我意识'] >= 3.5 && avg['自我调节'] >= 3.5) return '中：情绪稳定，适合高压领导角色';
+    return '待发展：建议先提升自我认知和情绪管理';
+}
+function getEQStress(avg) {
+    if (avg['自我调节'] >= 3.5) return '抗压能力较强，能在压力下保持冷静';
+    return '需要注意压力管理，建议学习压力调节技巧';
+}
+
+// ========== 工作动机辅助函数 ==========
+function getMotivationDesc(m) {
+    const d = { '成就动机': '您有强烈的成就需求，喜欢有挑战性的工作', '权力动机': '您希望影响他人，追求地位和影响力', '亲和动机': '您重视人际关系，喜欢合作性的工作环境', '成长动机': '您重视学习和成长机会，追求长期发展', '经济动机': '您重视物质回报，薪酬是重要激励因素', '认可动机': '您希望获得他人的认可和赞赏', '生活平衡': '您重视工作与生活的平衡', '社会价值': '您希望工作能对社会产生积极影响' };
+    return d[m] || m;
+}
+function getMotivationIncentives(avg) {
+    const inc = [];
+    for (const [k,v] of Object.entries(avg)) { if (v >= 3.5) inc.push(`激励因素：「${k}」—— 在管理中应重点关注`); }
+    return inc;
+}
+function getMotivationMgmt(avg) {
+    const tips = [];
+    if (avg['成就动机'] >= 3.5) tips.push('给予挑战性任务，提供成长机会');
+    if (avg['权力动机'] >= 3.5) tips.push('给予更多授权和责任');
+    if (avg['亲和动机'] >= 3.5) tips.push('营造合作氛围，多给予正面反馈');
+    if (avg['成长动机'] >= 3.5) tips.push('提供培训和学习机会');
+    return tips;
+}
+function getMotivationCareerFit(avg) {
+    if (avg['成就动机'] >= 3.5 && avg['权力动机'] >= 3.5) return '适合：销售、管理、创业';
+    if (avg['成长动机'] >= 3.5 && avg['社会价值'] >= 3.5) return '适合：教育、培训、NGO';
+    return '建议综合评估职业兴趣';
+}
+
+// ========== 工作价值观辅助函数 ==========
+function getValuesDesc(v) {
+    const d = { '薪酬福利': '您重视物质回报，选择工作时会优先考虑薪酬待遇', '稳定性': '您重视职业安全，偏好稳定的工作环境', '发展空间': '您重视学习和成长，偏好有培训体系的公司', '工作环境': '您重视团队氛围，偏好和谐的工作环境', '自主创造': '您重视自主权，偏好能发挥创造力的角色', '工作生活平衡': '您重视个人生活，不接受过度加班', '企业文化': '您重视公司价值观，偏好有社会责任感的企业', '成就感': '您重视工作意义，偏好能带来成就感的工作' };
+    return d[v] || v;
+}
+function getValuesOrgFit(avg) {
+    const fit = [];
+    if (avg['薪酬福利'] >= 4) fit.push('适合：高薪酬的互联网/金融行业');
+    if (avg['稳定性'] >= 4) fit.push('适合：国企、大型企业的稳定岗位');
+    if (avg['发展空间'] >= 4) fit.push('适合：有培训体系的成长型企业');
+    if (avg['工作生活平衡'] >= 4) fit.push('适合：弹性工作制、不加班的企业');
+    return fit;
+}
+function getValuesCareer(avg) {
+    if (avg['成就感'] >= 4 && avg['社会价值'] >= 4) return ['教育', 'NGO', '公共服务'];
+    if (avg['自主创造'] >= 4) return ['产品', '设计', '研发'];
+    return ['综合岗位，需结合兴趣测评'];
+}
+
+// ========== 工具直接测评提交（无需taskId）==========
+app.post('/api/assessment/submit', auth, (req, res) => {
+    const { answers, toolId, timeSpent } = req.body;
+
+    if (!answers || answers.length === 0) {
+        return res.json({ success: false, message: '请完成所有题目后再提交' });
+    }
+    if (!toolId) {
+        return res.json({ success: false, message: '缺少工具ID' });
+    }
+
+    const answerJson = JSON.stringify(answers);
+    const score = calculateScore(parseInt(toolId), answers);
+    const reportSummary = generateReportSummary(parseInt(toolId), answers);
+
+    // 直接写入结果（不需要taskId，用0表示独立提交）
+    db.run(
+        `INSERT INTO assessment_results (task_id, user_id, tool_id, answers, total_score, dimension_scores, report_data, status, created_at)
+         VALUES (0, ?, ?, ?, ?, ?, ?, 1, datetime('now'))`,
+        [req.user.userId, parseInt(toolId), answerJson, score.totalScore || score, JSON.stringify(score.dimensions || {}), JSON.stringify(reportSummary)],
+        function (err) {
+            if (err) {
+                console.error('Direct submit error:', err.message);
+                return res.json({ success: false, message: '保存失败: ' + err.message });
+            }
+
+            res.json({
+                success: true,
+                resultId: this.lastID,
+                score: score,
+                summary: reportSummary,
+                message: '测评提交成功！'
+            });
+        }
+    );
+});
+
+// ========== 胜任力模型 ==========
+app.get('/api/competency-models', auth, (req, res) => {
+    const defaultModels = [
+        { id: 1, name: '通用胜任力模型', dimensions: ['领导力','执行力','沟通协作','创新思维','学习能力'] },
+        { id: 2, name: '管理岗位模型', dimensions: ['战略规划','团队建设','决策能力','目标管理','影响力'] },
+        { id: 3, name: '技术岗位模型', dimensions: ['专业技能','问题解决','质量意识','技术学习','文档能力'] }
+    ];
+    res.json({ success: true, models: defaultModels });
+});
+
+// ========== 人才九宫格 ==========
+app.get('/api/nine-box', auth, (req, res) => {
+    db.all(`SELECT u.real_name, r.score, r.answers, t.task_name, at.tool_name
+            FROM assessment_results r
+            LEFT JOIN users u ON r.user_id = u.id
+            LEFT JOIN assessment_tasks t ON r.task_id = t.id
+            LEFT JOIN assessment_tools at ON r.tool_id = at.id
+            ORDER BY r.created_at DESC LIMIT 50`, [], (err, results) => {
+        if (err) return res.json({ success: false, message: err.message });
+        
+        // 将结果映射到九宫格
+        const nineBoxData = [];
+        (results || []).forEach(r => {
+            nineBoxData.push({
+                name: r.real_name || '未知用户',
+                performance: Math.floor(Math.random() * 30) + 35, // 模拟绩效 35-64
+                potential: Math.floor(Math.random() * 30) + 35,   // 模拟潜力 35-64
+                toolName: r.tool_name,
+                taskName: r.task_name,
+                submittedAt: r.created_at
+            });
+        });
+
+        res.json({
+            success: true,
+            employees: nineBoxData,
+            total: nineBoxData.length
+        });
+    });
+});
+
+// ========== 获取测评结果列表（报告列表）==========
+app.get('/api/results', auth, (req, res) => {
+    const userId = req.query.user_id;
+    const toolId = req.query.tool_id;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+    
+    let whereClause = 'WHERE r.status = "completed"';
+    let params = [];
+    
+    if (userId) {
+        whereClause += ' AND r.user_id = ?';
+        params.push(userId);
+    }
+    
+    if (toolId) {
+        whereClause += ' AND r.tool_id = ?';
+        params.push(toolId);
+    }
+    
+    // 获取总数
+    db.get(`SELECT COUNT(*) as total FROM assessment_results r ${whereClause}`, params, (err, countRow) => {
+        if (err) return res.json({ success: false, message: err.message });
+        
+        const total = countRow ? countRow.total : 0;
+        
+        // 获取数据
+        db.all(`SELECT r.*, u.real_name, t.tool_name, t.tool_type
+                FROM assessment_results r
+                LEFT JOIN users u ON r.user_id = u.id
+                LEFT JOIN assessment_tools t ON r.tool_id = t.id
+                ${whereClause}
+                ORDER BY r.created_at DESC
+                LIMIT ? OFFSET ?`, [...params, limit, offset], (err, rows) => {
+            if (err) return res.json({ success: false, message: err.message });
+            
+            // 处理数据
+            const results = (rows || []).map(row => {
+                let reportData = null;
+                if (row.report_data) {
+                    try { reportData = JSON.parse(row.report_data); } catch(e) { reportData = null; }
+                }
+                
+                return {
+                    id: row.id,
+                    user_id: row.user_id,
+                    tool_id: row.tool_id,
+                    tool_name: row.tool_name,
+                    tool_type: row.tool_type,
+                    user_name: row.real_name,
+                    total_score: row.total_score,
+                    dimension_scores: row.dimension_scores ? JSON.parse(row.dimension_scores) : null,
+                    report_summary: reportData ? (reportData.summary || reportData.overall_impression || '') : '',
+                    created_at: row.created_at,
+                    status: row.status
+                };
+            });
+            
+            res.json({
+                success: true,
+                results: results,
+                pagination: {
+                    page: page,
+                    limit: limit,
+                    total: total,
+                    totalPages: Math.ceil(total / limit)
+                }
+            });
+        });
+    });
+});
+
+// ========== 获取测评结果详情（含专业报告）==========
+app.get('/api/results/:id', auth, (req, res) => {
+    const resultId = req.params.id;
+    db.get(`SELECT r.*, u.real_name, t.tool_name
+            FROM assessment_results r
+            LEFT JOIN users u ON r.user_id = u.id
+            LEFT JOIN assessment_tools t ON r.tool_id = t.id
+            WHERE r.id = ?`, [resultId], (err, row) => {
+        if (err) return res.json({ success: false, message: err.message });
+        if (!row) return res.json({ success: false, message: '结果不存在' });
+        
+        // 解析报告数据
+        let reportData = null;
+        if (row.report_data) {
+            try { reportData = JSON.parse(row.report_data); } catch(e) { reportData = null; }
+        }
+        
+        // 如果没有报告数据，实时生成
+        if (!reportData && row.answers) {
+            try {
+                const answers = JSON.parse(row.answers);
+                reportData = generateReportSummary(row.tool_id, answers);
+            } catch(e) { console.error('生成报告失败', e); }
+        }
+        
+        res.json({
+            success: true,
+            result: {
+                id: row.id,
+                tool_id: row.tool_id,
+                tool_name: row.tool_name || '人才测评',
+                total_score: row.total_score,
+                dimension_scores: row.dimension_scores ? JSON.parse(row.dimension_scores) : null,
+                report_data: reportData,
+                answers: row.answers ? JSON.parse(row.answers) : null,
+                created_at: row.created_at,
+                user_name: row.real_name || '匿名用户'
+            }
+        });
+    });
+});
+
+// ========== 九宫格管理API ==========
+
+// 1. 创建九宫格评估
+app.post('/api/nine-box/grids', auth, (req, res) => {
+    const { grid_name, grid_type, review_period, description } = req.body;
+    const created_by = req.user.userId;
+    
+    if (!grid_name) {
+        return res.json({ success: false, message: '请输入九宫格名称' });
+    }
+    
+    db.run(`INSERT INTO nine_box_grids (grid_name, grid_type, review_period, description, created_by) 
+            VALUES (?, ?, ?, ?, ?)`, 
+            [grid_name, grid_type || 'talent_review', review_period, description, created_by], 
+            function(err) {
+        if (err) return res.json({ success: false, message: err.message });
+        res.json({ success: true, gridId: this.lastID, message: '九宫格创建成功' });
+    });
+});
+
+// 2. 获取九宫格列表
+app.get('/api/nine-box/grids', auth, (req, res) => {
+    db.all(`SELECT g.*, u.real_name as creator_name,
+            (SELECT COUNT(*) FROM nine_box_positions WHERE grid_id = g.id) as employee_count
+            FROM nine_box_grids g 
+            LEFT JOIN users u ON g.created_by = u.id
+            ORDER BY g.created_at DESC`, [], (err, rows) => {
+        if (err) return res.json({ success: false, message: err.message });
+        res.json({ success: true, grids: rows });
+    });
+});
+
+// 3. 获取九宫格详情
+app.get('/api/nine-box/grids/:id', auth, (req, res) => {
+    const gridId = req.params.id;
+    
+    db.get(`SELECT g.*, u.real_name as creator_name 
+            FROM nine_box_grids g 
+            LEFT JOIN users u ON g.created_by = u.id
+            WHERE g.id = ?`, [gridId], (err, grid) => {
+        if (err) return res.json({ success: false, message: err.message });
+        if (!grid) return res.json({ success: false, message: '九宫格不存在' });
+        
+        // 获取所有员工位置
+        db.all(`SELECT p.*, u.username, u.real_name
+                FROM nine_box_positions p
+                LEFT JOIN users u ON p.user_id = u.id
+                WHERE p.grid_id = ?`, [gridId], (err, positions) => {
+            if (err) return res.json({ success: false, message: err.message });
+            
+            grid.positions = positions || [];
+            res.json({ success: true, grid });
+        });
+    });
+});
+
+// 4. 添加/更新员工位置
+app.post('/api/nine-box/grids/:id/positions', auth, (req, res) => {
+    const gridId = req.params.id;
+    const { user_id, performance_score, potential_score, notes } = req.body;
+    
+    if (!user_id) {
+        return res.json({ success: false, message: '请选择员工' });
+    }
+    
+    // 计算格子位置
+    const perf = performance_score || 3;
+    const pot = potential_score || 3;
+    
+    // 将1-5的分数转换为1-3的格子坐标
+    const grid_x = Math.min(3, Math.max(1, Math.round(perf)));
+    const grid_y = Math.min(3, Math.max(1, Math.round(pot)));
+    
+    // 计算象限（1-9）
+    const quadrant = (3 - grid_y) * 3 + grid_x;
+    
+    db.run(`INSERT INTO nine_box_positions (grid_id, user_id, performance_score, potential_score, grid_x, grid_y, quadrant, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(grid_id, user_id) DO UPDATE SET
+            performance_score = excluded.performance_score,
+            potential_score = excluded.potential_score,
+            grid_x = excluded.grid_x,
+            grid_y = excluded.grid_y,
+            quadrant = excluded.quadrant,
+            notes = excluded.notes,
+            updated_at = CURRENT_TIMESTAMP`, 
+            [gridId, user_id, perf, pot, grid_x, grid_y, quadrant, notes], 
+            function(err) {
+        if (err) return res.json({ success: false, message: err.message });
+        res.json({ success: true, positionId: this.lastID, message: '员工位置已更新', grid_position: { grid_x, grid_y, quadrant } });
+    });
+});
+
+// 5. 获取所有员工位置
+app.get('/api/nine-box/grids/:id/positions', auth, (req, res) => {
+    const gridId = req.params.id;
+    
+    db.all(`SELECT p.*, u.username, u.real_name
+            FROM nine_box_positions p
+            LEFT JOIN users u ON p.user_id = u.id
+            WHERE p.grid_id = ?`, [gridId], (err, rows) => {
+        if (err) return res.json({ success: false, message: err.message });
+        res.json({ success: true, positions: rows });
+    });
+});
+
+// 6. 根据测评数据计算潜力分数
+app.post('/api/nine-box/calculate-potential', auth, (req, res) => {
+    const { user_id } = req.body;
+    
+    if (!user_id) {
+        return res.json({ success: false, message: '请指定员工ID' });
+    }
+    
+    // 获取该员工的所有测评结果
+    db.all(`SELECT r.*, t.tool_name, t.tool_type
+            FROM assessment_results r
+            LEFT JOIN assessment_tools t ON r.tool_id = t.id
+            WHERE r.user_id = ? AND r.status = 'completed'
+            ORDER BY r.created_at DESC`, [user_id], (err, results) => {
+        if (err) return res.json({ success: false, message: err.message });
+        
+        if (!results || results.length === 0) {
+            return res.json({ success: true, potential_score: 3, message: '该员工无测评数据，使用默认潜力分数' });
+        }
+        
+        // 计算潜力分数（基于测评结果）
+        let totalScore = 0;
+        let scoreCount = 0;
+        
+        results.forEach(result => {
+            if (result.total_score) {
+                // 将测评分数（假设是0-100）转换为1-5的潜力分数
+                const normalizedScore = (result.total_score / 100) * 5;
+                totalScore += normalizedScore;
+                scoreCount++;
+            }
+        });
+        
+        const potentialScore = scoreCount > 0 ? (totalScore / scoreCount) : 3;
+        const finalScore = Math.max(1, Math.min(5, potentialScore));
+        
+        res.json({ 
+            success: true, 
+            potential_score: Math.round(finalScore * 10) / 10,
+            assessment_count: results.length,
+            message: '潜力分数计算成功' 
+        });
+    });
+});
+
+// 7. 批量计算所有员工的潜力分数
+app.post('/api/nine-box/batch-calculate-potential', auth, (req, res) => {
+    const { grid_id } = req.body;
+    
+    if (!grid_id) {
+        return res.json({ success: false, message: '请指定九宫格ID' });
+    }
+    
+    // 获取所有员工
+    db.all('SELECT id, real_name FROM users WHERE role = "user" OR role = "manager"', [], (err, users) => {
+        if (err) return res.json({ success: false, message: err.message });
+        
+        const calculations = [];
+        let completed = 0;
+        
+        users.forEach(user => {
+            // 获取该员工的测评结果
+            db.all(`SELECT r.*, t.tool_name 
+                    FROM assessment_results r
+                    LEFT JOIN assessment_tools t ON r.tool_id = t.id
+                    WHERE r.user_id = ? AND r.status = 'completed'`, 
+                    [user.id], (err, results) => {
+                if (err) {
+                    calculations.push({ user_id: user.id, potential_score: 3 });
+                } else if (!results || results.length === 0) {
+                    calculations.push({ user_id: user.id, potential_score: 3 });
+                } else {
+                    // 计算潜力分数
+                    let totalScore = 0;
+                    let scoreCount = 0;
+                    
+                    results.forEach(result => {
+                        if (result.total_score) {
+                            const normalizedScore = (result.total_score / 100) * 5;
+                            totalScore += normalizedScore;
+                            scoreCount++;
+                        }
+                    });
+                    
+                    const potentialScore = scoreCount > 0 ? (totalScore / scoreCount) : 3;
+                    const finalScore = Math.max(1, Math.min(5, potentialScore));
+                    
+                    calculations.push({ 
+                        user_id: user.id, 
+                        potential_score: Math.round(finalScore * 10) / 10 
+                    });
+                }
+                
+                completed++;
+                
+                // 所有计算完成后，更新九宫格
+                if (completed === users.length) {
+                    // 批量更新位置
+                    let updateCount = 0;
+                    
+                    calculations.forEach(calc => {
+                        const grid_x = 3; // 默认绩效为3
+                        const grid_y = Math.round(calc.potential_score);
+                        const quadrant = (3 - grid_y) * 3 + grid_x;
+                        
+                        db.run(`INSERT INTO nine_box_positions (grid_id, user_id, potential_score, grid_x, grid_y, quadrant)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                                ON CONFLICT(grid_id, user_id) DO UPDATE SET
+                                potential_score = excluded.potential_score,
+                                grid_y = excluded.grid_y,
+                                quadrant = excluded.quadrant,
+                                updated_at = CURRENT_TIMESTAMP`, 
+                                [grid_id, calc.user_id, calc.potential_score, grid_x, grid_y, quadrant], 
+                                function(err) {
+                            updateCount++;
+                            
+                            if (updateCount === calculations.length) {
+                                res.json({ 
+                                    success: true, 
+                                    message: `已为${users.length}名员工计算潜力分数`,
+                                    calculations 
+                                });
+                            }
+                        });
+                    });
+                }
+            });
+        });
+    });
+});
+
+// 8. 录入绩效分数
+app.post('/api/performance', auth, (req, res) => {
+    const { user_id, review_period, performance_score, performance_level, kpi_score, 
+            goals_achievement, competencies_score, notes } = req.body;
+    const reviewer_id = req.user.userId;
+    
+    if (!user_id || !review_period) {
+        return res.json({ success: false, message: '请填写完整信息' });
+    }
+    
+    db.run(`INSERT INTO performance_records (user_id, review_period, performance_score, performance_level, 
+            kpi_score, goals_achievement, competencies_score, reviewer_id, review_date, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, DATE('now'), ?)
+            ON CONFLICT(user_id, review_period) DO UPDATE SET
+            performance_score = excluded.performance_score,
+            performance_level = excluded.performance_level,
+            kpi_score = excluded.kpi_score,
+            goals_achievement = excluded.goals_achievement,
+            competencies_score = excluded.competencies_score,
+            reviewer_id = excluded.reviewer_id,
+            review_date = DATE('now'),
+            notes = excluded.notes,
+            updated_at = CURRENT_TIMESTAMP`, 
+            [user_id, review_period, performance_score, performance_level, kpi_score, 
+             goals_achievement, competencies_score, reviewer_id, notes], 
+            function(err) {
+        if (err) return res.json({ success: false, message: err.message });
+        res.json({ success: true, recordId: this.lastID, message: '绩效记录已保存' });
+    });
+});
+
+// 9. 获取员工绩效记录
+app.get('/api/performance/:userId', auth, (req, res) => {
+    const userId = req.params.userId;
+    
+    db.all(`SELECT p.*, u.real_name as reviewer_name
+            FROM performance_records p
+            LEFT JOIN users u ON p.reviewer_id = u.id
+            WHERE p.user_id = ?
+            ORDER BY p.review_period DESC`, [userId], (err, rows) => {
+        if (err) return res.json({ success: false, message: err.message });
+        res.json({ success: true, records: rows });
+    });
+});
+
+// 10. 获取用户的测评结果（用于前端展示）
+app.get('/api/nine-box/users/:userId/assessments', auth, (req, res) => {
+    const userId = req.params.userId;
+    
+    db.all(`SELECT r.*, t.tool_name, t.tool_type
+            FROM assessment_results r
+            LEFT JOIN assessment_tools t ON r.tool_id = t.id
+            WHERE r.user_id = ? AND r.status = 'completed'
+            ORDER BY r.created_at DESC`, [userId], (err, rows) => {
+        if (err) return res.json({ success: false, message: err.message });
+        
+        // 计算综合潜力分数
+        let totalScore = 0;
+        let scoreCount = 0;
+        
+        rows.forEach(row => {
+            if (row.total_score) {
+                const normalizedScore = (row.total_score / 100) * 5;
+                totalScore += normalizedScore;
+                scoreCount++;
+            }
+        });
+        
+        const potentialScore = scoreCount > 0 ? (totalScore / scoreCount) : 3;
+        const finalScore = Math.max(1, Math.min(5, potentialScore));
+        
+        res.json({ 
+            success: true, 
+            assessments: rows,
+            potential_score: Math.round(finalScore * 10) / 10,
+            assessment_count: rows.length
+        });
+    });
+});
+
+// 11. 同步绩效数据到九宫格
+app.post('/api/nine-box/sync-performance', auth, (req, res) => {
+    const { grid_id } = req.body;
+    
+    if (!grid_id) {
+        return res.json({ success: false, message: '请指定九宫格ID' });
+    }
+    
+    // 获取所有有绩效记录的员工
+    db.all(`SELECT DISTINCT p.user_id, p.performance_score
+            FROM performance_records p
+            WHERE p.review_period = (SELECT MAX(review_period) FROM performance_records)`, 
+            [], (err, perfRecords) => {
+        if (err) return res.json({ success: false, message: err.message });
+        
+        let updateCount = 0;
+        
+        perfRecords.forEach(record => {
+            // 更新九宫格中的位置
+            db.run(`UPDATE nine_box_positions 
+                    SET performance_score = ?,
+                    grid_x = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                    WHERE grid_id = ? AND user_id = ?`, 
+                    [record.performance_score, Math.round(record.performance_score), grid_id, record.user_id], 
+                    function(err) {
+                updateCount++;
+                
+                if (updateCount === perfRecords.length) {
+                    res.json({ 
+                        success: true, 
+                        message: `已同步${perfRecords.length}名员工的绩效数据`,
+                        synced_count: perfRecords.length
+                    });
+                }
+            });
+        });
+        
+        if (perfRecords.length === 0) {
+            res.json({ success: true, message: '没有找到绩效记录', synced_count: 0 });
+        }
+    });
+});
+
+// ========== 启动服务器 ==========
+app.listen(PORT, () => {
+    console.log('');
+    console.log('========================================');
+    console.log('  ✅ 人才测评系统后端服务已启动');
+    console.log('========================================');
+    console.log('  地址: http://localhost:' + PORT);
+    console.log('  账号: admin / admin123');
+    console.log('========================================');
+});

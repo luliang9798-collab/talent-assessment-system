@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录功能测试 - 人才测评系统</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: #f5f7fa;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #303133;
+            margin-bottom: 20px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 6px;
+        }
+        .test-section h2 {
+            color: #606266;
+            font-size: 18px;
+            margin-bottom: 15px;
+        }
+        button {
+            padding: 10px 20px;
+            background: #409eff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #66b1ff;
+        }
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f0f9ff;
+            border: 1px solid #91caff;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .success {
+            background: #f6ffed;
+            border-color: #b7eb8f;
+            color: #389e0d;
+        }
+        .error {
+            background: #fff2f0;
+            border-color: #ffccc7;
+            color: #ff4d4f;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #606266;
+            font-weight: bold;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #dcdfe6;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .status {
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .status.running {
+            background: #f6ffed;
+            color: #389e0d;
+            border: 1px solid #b7eb8f;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 登录功能测试</h1>
+        
+        <div class="status running">
+            ✅ 后端服务运行状态: 正常 (端口 3000)
+        </div>
+        
+        <div class="test-section">
+            <h2>测试1: API健康检查</h2>
+            <button onclick="testHealth()">测试健康检查</button>
+            <div id="healthResult" class="result" style="display:none;"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>测试2: 用户登录</h2>
+            <div class="form-group">
+                <label>用户名</label>
+                <input type="text" id="username" value="admin" placeholder="请输入用户名">
+            </div>
+            <div class="form-group">
+                <label>密码</label>
+                <input type="password" id="password" value="admin123" placeholder="请输入密码">
+            </div>
+            <button onclick="testLogin()">测试登录</button>
+            <div id="loginResult" class="result" style="display:none;"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>测试3: Token认证</h2>
+            <p>使用登录获取的Token测试认证API</p>
+            <button onclick="testAuth()" id="authBtn" disabled>测试Token认证</button>
+            <div id="authResult" class="result" style="display:none;"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>📋 测试说明</h2>
+            <p>此页面用于测试登录功能是否正常工作。</p>
+            <p><strong>测试步骤:</strong></p>
+            <ol>
+                <li>点击"测试健康检查" - 验证后端服务是否运行</li>
+                <li>点击"测试登录" - 验证登录API是否正常工作</li>
+                <li>登录成功后，点击"测试Token认证" - 验证Token是否有效</li>
+            </ol>
+            <p><strong>预期结果:</strong></p>
+            <ul>
+                <li>✅ 健康检查返回: <code>{"status":"ok"}</code></li>
+                <li>✅ 登录成功返回: <code>{"success":true,"token":"...","user":{...}}</code></li>
+                <li>✅ Token认证成功返回: <code>{"success":true,"tools":[...]}</code></li>
+            </ul>
+        </div>
+        
+        <div class="test-section">
+            <h2>🔗 访问完整系统</h2>
+            <p>如果所有测试通过，可以访问完整系统:</p>
+            <a href="/index-complete.html" style="display: inline-block; padding: 10px 20px; background: #67c23a; color: white; text-decoration: none; border-radius: 4px;">访问完整系统</a>
+        </div>
+    </div>
+    
+    <script>
+        let authToken = '';
+        
+        async function testHealth() {
+            const resultDiv = document.getElementById('healthResult');
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result';
+            resultDiv.textContent = '测试中...';
+            
+            try {
+                const response = await axios.get('http://localhost:3000/api/health');
+                resultDiv.classList.add('success');
+                resultDiv.textContent = '✅ 健康检查成功\n\n响应数据:\n' + JSON.stringify(response.data, null, 2);
+            } catch (error) {
+                resultDiv.classList.add('error');
+                resultDiv.textContent = '❌ 健康检查失败\n\n错误信息:\n' + error.message;
+            }
+        }
+        
+        async function testLogin() {
+            const resultDiv = document.getElementById('loginResult');
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result';
+            resultDiv.textContent = '登录中...';
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const response = await axios.post('http://localhost:3000/api/auth/login', {
+                    username: username,
+                    password: password
+                });
+                
+                if (response.data.success) {
+                    resultDiv.classList.add('success');
+                    resultDiv.textContent = '✅ 登录成功！\n\n响应数据:\n' + JSON.stringify(response.data, null, 2);
+                    authToken = response.data.token;
+                    document.getElementById('authBtn').disabled = false;
+                } else {
+                    resultDiv.classList.add('error');
+                    resultDiv.textContent = '❌ 登录失败\n\n错误信息:\n' + response.data.message;
+                }
+            } catch (error) {
+                resultDiv.classList.add('error');
+                resultDiv.textContent = '❌ 登录失败\n\n错误信息:\n' + error.message + '\n\n详细错误:\n' + JSON.stringify(error.response?.data, null, 2);
+            }
+        }
+        
+        async function testAuth() {
+            if (!authToken) {
+                alert('请先登录获取Token');
+                return;
+            }
+            
+            const resultDiv = document.getElementById('authResult');
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result';
+            resultDiv.textContent = '测试Token认证中...';
+            
+            try {
+                const response = await axios.get('http://localhost:3000/api/tools', {
+                    headers: {
+                        'Authorization': 'Bearer ' + authToken
+                    }
+                });
+                
+                resultDiv.classList.add('success');
+                resultDiv.textContent = '✅ Token认证成功！\n\n响应数据:\n' + JSON.stringify(response.data, null, 2);
+            } catch (error) {
+                resultDiv.classList.add('error');
+                resultDiv.textContent = '❌ Token认证失败\n\n错误信息:\n' + error.message + '\n\n详细错误:\n' + JSON.stringify(error.response?.data, null, 2);
+            }
+        }
+    </script>
+</body>
+</html>

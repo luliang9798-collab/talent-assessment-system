@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>人才测评系统</title>
+    <link rel="stylesheet" href="/libs/element-plus.css">
+    <script src="/libs/vue.global.js"></script>
+    <script src="/libs/element-plus.js"></script>
+    <script src="/libs/axios.min.js"></script>
+    <script src="/libs/echarts.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; }
+        .layout { display: flex; min-height: 100vh; }
+        .sidebar { width: 250px; background: linear-gradient(180deg, #304156 0%, #263445 100%); color: white; }
+        .sidebar-header { padding: 20px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .sidebar-header h2 { margin: 0; font-size: 20px; }
+        .menu { padding: 10px 0; }
+        .menu-item { padding: 15px 25px; cursor: pointer; transition: all 0.3s; display: flex; align-items: center; gap: 10px; }
+        .menu-item:hover { background: rgba(255,255,255,0.1); }
+        .menu-item.active { background: #409EFF; }
+        .main { flex: 1; display: flex; flex-direction: column; }
+        .header { background: white; padding: 15px 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
+        .content { flex: 1; padding: 30px; overflow-y: auto; }
+        .card { background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .stat-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 25px; border-radius: 8px; }
+        .stat-number { font-size: 36px; font-weight: bold; margin: 10px 0; }
+        .btn { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.3s; }
+        .btn-primary { background: #409EFF; color: white; }
+        .btn-success { background: #67C23A; color: white; }
+        .btn-warning { background: #E6A23C; color: white; }
+        .btn-danger { background: #F56C6C; color: white; }
+        .btn-info { background: #909399; color: white; }
+        .btn:hover { opacity: 0.8; transform: translateY(-2px); }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ebeef5; }
+        th { background: #f5f7fa; color: #606266; }
+        input, select, textarea { width: 100%; padding: 8px 12px; border: 1px solid #dcdfe6; border-radius: 4px; font-size: 14px; }
+        .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: white; border-radius: 8px; padding: 30px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
+        .tag { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; }
+        .tag-success { background: #f0f9ff; color: #67C23A; }
+        .tag-warning { background: #fdf6ec; color: #E6A23C; }
+        .tag-info { background: #f4f4f5; color: #909399; }
+        .login-page { min-height: 100vh; display: flex; justify-content: center; align-items: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .login-box { background: white; padding: 50px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); width: 400px; }
+        .login-title { text-align: center; font-size: 28px; color: #303133; margin-bottom: 30px; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- 登录页面 -->
+        <div v-if="!isLoggedIn" class="login-page">
+            <div class="login-box">
+                <div class="login-title">人才测评系统</div>
+                <div style="margin-bottom: 20px;">
+                    <label>用户名</label>
+                    <input v-model="loginForm.username" type="text" placeholder="请输入用户名" />
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label>密码</label>
+                    <input v-model="loginForm.password" type="password" placeholder="请输入密码" />
+                </div>
+                <div v-if="loginError" style="color: #F56C6C; margin-bottom: 15px;">{{ loginError }}</div>
+                <button class="btn btn-primary" style="width: 100%;" @click="handleLogin">登录</button>
+                <div style="margin-top: 20px; text-align: center; color: #909399;">
+                    <small>默认账号: admin / admin123</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主界面 -->
+        <div v-else class="layout">
+            <!-- 侧边栏 -->
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <h2>✅ 人才测评系统</h2>
+                </div>
+                <div class="menu">
+                    <div class="menu-item" :class="{ active: currentPage === 'dashboard' }" @click="currentPage = 'dashboard'">
+                        <span>📊</span> <span>系统首页</span>
+                    </div>
+                    <div class="menu-item" :class="{ active: currentPage === 'my-tasks' }" @click="currentPage = 'my-tasks'">
+                        <span>📝</span> <span>我的测评</span>
+                    </div>
+                    <div class="menu-item" :class="{ active: currentPage === 'projects' }" @click="currentPage = 'projects'">
+                        <span>📁</span> <span>测评项目管理</span>
+                    </div>
+                    <div class="menu-item" :class="{ active: currentPage === 'tasks' }" @click="currentPage = 'tasks'">
+                        <span>✅</span> <span>测评任务管理</span>
+                    </div>
+                    <div class="menu-item" :class="{ active: currentPage === 'upload' }" @click="currentPage = 'upload'">
+                        <span>📤</span> <span>数据上传</span>
+                    </div>
+                    <div class="menu-item" :class="{ active: currentPage === 'tools' }" @click="currentPage = 'tools'">
+                        <span>🔧</span> <span>测评工具</span>
+                    </div>
+                    <div class="menu-item" :class="{ active: currentPage === 'reports' }" @click="currentPage = 'reports'">
+                        <span>📄</span> <span>测评报告</span>
+                    </div>
+                    <div class="menu-item" :class="{ active: currentPage === 'users' }" @click="currentPage = 'users'">
+                        <span>👥</span> <span>用户管理</span>
+                    </div>
+                    <div class="menu-item" :class="{ active: currentPage === 'talent-map' }" @click="currentPage = 'talent-map'">
+                        <span>🗺️</span> <span>人才地图</span>
+                    </div>
+                    <div class="menu-item" :class="{ active: currentPage === 'succession' }" @click="currentPage = 'succession'">
+                        <span>🎯</span> <span>继任计划</span>
+                    </div>
+                    <div class="menu-item" :class="{ active: currentPage === 'config' }" @click="currentPage = 'config'">
+                        <span>⚙️</span> <span>系统配置</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 主内容区 -->
+            <div class="main">
+                <div class="header">
+                    <h2 style="margin: 0; color: #303133;">{{ getPageTitle() }}</h2>
+                    <div>
+                        <span style="margin-right: 20px;">欢迎, {{ currentUser.realName }}</span>
+                        <button class="btn btn-danger" @click="handleLogout">退出</button>
+                    </div>
+                </div>
+
+                <div class="content">
+                    <!-- 系统首页 -->
+                    <div v-if="currentPage === 'dashboard'">
+                        <div class="grid" style="margin-bottom: 30px;">
+                            <div class="stat-card">
+                                <div>测评项目</div>
+                                <div class="stat-number">{{ statistics.totalProjects }}</div>
+                                <div>个活跃项目</div>
+                            </div>
+                            <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                                <div>测评任务</div>
+                                <div class="stat-number">{{ statistics.totalTasks }}</div>
+                                <div>个待完成任务</div>
+                            </div>
+                            <div class="stat-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                                <div>生成报告</div>
+                                <div class="stat-number">{{ statistics.totalReports }}</div>
+                                <div>份测评报告</div>
+                            </div>
+                            <div class="stat-card" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                                <div>系统用户</div>
+                                <div class="stat-number">{{ statistics.totalUsers }}</div>
+                                <div>个注册用户</div>
+                            </div>
+                        </div>
+                        
+                        <div class="card">
+                            <h3 style="margin-bottom: 20px;">我的测评任务</h3>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>项目名称</th>
+                                        <th>测评工具</th>
+                                        <th>状态</th>
+                                        <th>分配时间</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="task in myTasks" :key="task.id">
+                                        <td>{{ task.project_name }}</td>
+                                        <td>{{ task.tool_name }}</td>
+                                        <td>
+                                            <span class="tag" :class="getStatusClass(task.status)">{{ getStatusText(task.status) }}</span>
+                                        </td>
+                                        <td>{{ formatDate(task.created_at) }}</td>
+                                        <td>
+                                            <button v-if="task.status === 1" class="btn btn-primary" @click="startAssessment(task)">开始测评</button>
+                                            <button v-else class="btn btn-info" @click="viewReport(task)">查看报告</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 我的测评页面 -->
+                    <div v-if="currentPage === 'my-tasks'">
+                        <div class="card">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                <h3 style="margin: 0;">我的测评任务</h3>
+                            </div>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>项目名称</th>
+                                        <th>测评工具</th>
+                                        <th>测评类型</th>
+                                        <th>状态</th>
+                                        <th>分配时间</th>
+                                        <th>完成时间</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="task in myTasks" :key="task.id">
+                                        <td>{{ task.project_name }}</td>
+                                        <td>{{ task.tool_name }}</td>
+                                        <td>{{ task.tool_type }}</td>
+                                        <td>
+                                            <span class="tag" :class="getStatusClass(task.status)">{{ getStatusText(task.status) }}</span>
+                                        </td>
+                                        <td>{{ formatDate(task.created_at) }}</td>
+                                        <td>{{ task.completed_at ? formatDate(task.completed_at) : '-' }}</td>
+                                        <td>
+                                            <button v-if="task.status === 1" class="btn btn-primary" @click="startAssessment(task)">开始测评</button>
+                                            <button v-else-if="task.status === 2" class="btn btn-success" @click="viewReport(task)">查看报告</button>
+                                            <span v-else class="tag tag-info">草稿</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 测评项目管理页面 -->
+                    <div v-if="currentPage === 'projects'" class="card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h3>测评项目管理</h3>
+                            <button class="btn btn-primary" @click="showCreateProjectDialog = true">新建项目</button>
+                        </div>
+                        
+                        <!-- 项目列表 -->
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>项目名称</th>
+                                    <th>项目类型</th>
+                                    <th>描述</th>
+                                    <th>创建时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="project in projects" :key="project.id">
+                                    <td>{{ project.project_name }}</td>
+                                    <td>{{ project.project_type }}</td>
+                                    <td>{{ project.description || '-' }}</td>
+                                    <td>{{ formatDate(project.created_at) }}</td>
+                                    <td>
+                                        <button class="btn btn-info" @click="viewProject(project)">查看</button>
+                                        <button class="btn btn-danger" @click="deleteProject(project)">删除</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        
+                        <!-- 创建项目对话框 -->
+                        <div v-if="showCreateProjectDialog" class="modal">
+                            <div class="modal-content">
+                                <h3>创建测评项目</h3>
+                                <div style="margin: 20px 0;">
+                                    <label>项目名称</label>
+                                    <input v-model="newProject.projectName" style="margin-top: 5px;" placeholder="请输入项目名称">
+                                </div>
+                                <div style="margin: 20px 0;">
+                                    <label>项目类型</label>
+                                    <select v-model="newProject.projectType" style="margin-top: 5px; width: 100%; padding: 8px;">
+                                        <option value="RECRUITMENT">招聘测评</option>
+                                        <option value="DEVELOPMENT">发展测评</option>
+                                        <option value="SUCCESSION">继任测评</option>
+                                    </select>
+                                </div>
+                                <div style="margin: 20px 0;">
+                                    <label>项目描述</label>
+                                    <textarea v-model="newProject.description" style="margin-top: 5px; min-height: 100px;" placeholder="请输入项目描述"></textarea>
+                                </div>
+                                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                                    <button class="btn" @click="showCreateProjectDialog = false">取消</button>
+                                    <button class="btn btn-primary" @click="createProject">创建</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-if="currentPage === 'tools'" class="card">
+                        <h3>测评工具管理</h3>
+                        <p>系统已配置5个测评工具：</p>
+                        <ul style="margin-top: 15px; line-height: 2;">
+                            <li>✅ 大五人格测评 (PERSONALITY) - 10题</li>
+                            <li>✅ 职业兴趣测评 (INTEREST) - 6题</li>
+                            <li>✅ 工作动机测评 (MOTIVATION) - 5题</li>
+                            <li>✅ MBTI性格类型测评 (PERSONALITY)</li>
+                            <li>✅ 领导力测评 (LEADERSHIP)</li>
+                        </ul>
+                    </div>
+
+                    <div v-if="currentPage === 'reports'" class="card">
+                        <h3>测评报告</h3>
+                        <p>完成测评后，系统会自动生成个人报告</p>
+                        <p>报告包含：得分分析、优势识别、不足分析、发展建议</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, onMounted } = Vue;
+        
+        createApp({
+            setup() {
+                const isLoggedIn = ref(false);
+                const loginForm = ref({ username: '', password: '' });
+                const loginError = ref('');
+                const currentUser = ref({});
+                const currentPage = ref('dashboard');
+                const statistics = ref({
+                    totalProjects: 0,
+                    totalTasks: 0,
+                    totalUsers: 0,
+                    totalReports: 0
+                });
+                const myTasks = ref([]);
+                const projects = ref([]);
+                const showCreateProjectDialog = ref(false);
+                const newProject = ref({ projectName: '', projectType: 'RECRUITMENT', description: '' });
+                
+                // 登录
+                const handleLogin = async () => {
+                    try {
+                        const response = await axios.post('/api/auth/login', loginForm.value);
+                        if (response.data.success) {
+                            localStorage.setItem('token', response.data.token);
+                            isLoggedIn.value = true;
+                            currentUser.value = response.data.user;
+                            await loadMyTasks();
+                            await loadDashboardData();
+                            loginError.value = '';
+                        }
+                    } catch (error) {
+                        loginError.value = '登录失败: ' + (error.response?.data?.message || '用户名或密码错误');
+                    }
+                };
+                
+                // 加载我的测评任务
+                const loadMyTasks = async () => {
+                    try {
+                        const token = localStorage.getItem('token');
+                        const response = await axios.get(`/api/my-tasks/${currentUser.value.id}`, {
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
+                        if (response.data.success) {
+                            myTasks.value = response.data.tasks;
+                        }
+                    } catch (error) {
+                        console.error('加载任务失败', error);
+                    }
+                };
+                
+                // 加载首页数据
+                const loadDashboardData = async () => {
+                    // 这里可以加载统计数据
+                    statistics.value = {
+                        totalProjects: 3,
+                        totalTasks: myTasks.value.length,
+                        totalUsers: 10,
+                        totalReports: 2
+                    };
+                };
+                
+                // 加载项目列表
+                const loadProjects = async () => {
+                    try {
+                        const token = localStorage.getItem('token');
+                        const response = await axios.get('/api/projects', {
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
+                        if (response.data) {
+                            projects.value = response.data;
+                        }
+                    } catch (error) {
+                        console.error('加载项目列表失败', error);
+                    }
+                };
+                
+                // 创建项目
+                const createProject = async () => {
+                    if (!newProject.value.projectName) {
+                        alert('请输入项目名称');
+                        return;
+                    }
+                    
+                    try {
+                        const token = localStorage.getItem('token');
+                        const response = await axios.post('/api/projects', newProject.value, {
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
+                        
+                        if (response.data.success) {
+                            alert('项目创建成功！');
+                            showCreateProjectDialog.value = false;
+                            newProject.value = { projectName: '', projectType: 'RECRUITMENT', description: '' };
+                            await loadProjects();
+                        } else {
+                            alert('创建项目失败: ' + (response.data.message || '未知错误'));
+                        }
+                    } catch (error) {
+                        console.error('创建项目失败', error);
+                        alert('创建项目失败: ' + (error.response?.data?.message || error.message));
+                    }
+                };
+                
+                // 查看项目
+                const viewProject = (project) => {
+                    alert('项目详情功能开发中...\n项目ID: ' + project.id + '\n项目名称: ' + project.project_name);
+                };
+                
+                // 删除项目
+                const deleteProject = async (project) => {
+                    if (!confirm('确定要删除项目 "' + project.project_name + '" 吗？')) {
+                        return;
+                    }
+                    
+                    try {
+                        const token = localStorage.getItem('token');
+                        const response = await axios.delete('/api/projects/' + project.id, {
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
+                        
+                        if (response.data.success) {
+                            alert('项目删除成功！');
+                            await loadProjects();
+                        } else {
+                            alert('删除项目失败: ' + (response.data.message || '未知错误'));
+                        }
+                    } catch (error) {
+                        console.error('删除项目失败', error);
+                        alert('删除项目失败: ' + (error.response?.data?.message || error.message));
+                    }
+                };
+                
+                // 开始测评
+                const startAssessment = (task) => {
+                    // 打开答题页面
+                    window.open(`/assessment.html?taskId=${task.id}`, '_blank');
+                };
+                
+                // 查看报告
+                const viewReport = (task) => {
+                    alert('报告查看功能开发中...\n任务ID: ' + task.id);
+                };
+                
+                // 获取页面标题
+                const getPageTitle = () => {
+                    const titles = {
+                        'dashboard': '系统首页',
+                        'my-tasks': '我的测评',
+                        'projects': '测评项目管理',
+                        'tasks': '测评任务管理',
+                        'upload': '数据上传',
+                        'tools': '测评工具',
+                        'reports': '测评报告',
+                        'users': '用户管理',
+                        'talent-map': '人才地图',
+                        'succession': '继任计划',
+                        'config': '系统配置'
+                    };
+                    return titles[currentPage.value] || '系统首页';
+                };
+                
+                // 获取状态样式
+                const getStatusClass = (status) => {
+                    const classes = {
+                        0: 'tag-info',
+                        1: 'tag-warning',
+                        2: 'tag-success'
+                    };
+                    return classes[status] || 'tag-info';
+                };
+                
+                // 获取状态文本
+                const getStatusText = (status) => {
+                    const texts = {
+                        0: '草稿',
+                        1: '进行中',
+                        2: '已完成'
+                    };
+                    return texts[status] || '未知';
+                };
+                
+                // 格式化日期
+                const formatDate = (dateStr) => {
+                    if (!dateStr) return '-';
+                    return new Date(dateStr).toLocaleDateString('zh-CN');
+                };
+                
+                // 退出登录
+                const handleLogout = () => {
+                    localStorage.removeItem('token');
+                    isLoggedIn.value = false;
+                    currentUser.value = {};
+                };
+                
+                // 检查登录状态
+                onMounted(() => {
+                    const token = localStorage.getItem('token');
+                    if (token) {
+                        isLoggedIn.value = true;
+                        // 加载用户信息
+                        loadMyTasks();
+                        loadDashboardData();
+                    }
+                });
+                
+                return {
+                    isLoggedIn,
+                    loginForm,
+                    loginError,
+                    currentUser,
+                    currentPage,
+                    statistics,
+                    myTasks,
+                    showProjectDialog,
+                    handleLogin,
+                    handleLogout,
+                    loadMyTasks,
+                    loadDashboardData,
+                    startAssessment,
+                    viewReport,
+                    getPageTitle,
+                    getStatusClass,
+                    getStatusText,
+                    formatDate
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

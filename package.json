@@ -1,0 +1,28 @@
+{
+  "name": "talent-assessment-system",
+  "version": "1.0.0",
+  "description": "人才测评系统 - 基于SHL/北森对标",
+  "main": "backend-nodejs/server-minimal.js",
+  "scripts": {
+    "start": "node backend-nodejs/server-minimal.js",
+    "build": "echo '前端已构建'",
+    "postinstall": "echo '安装完成'"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^12.11.1",
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "sqlite3": "^5.1.6",
+    "xlsx": "^0.18.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["人才测评", "SHL", "北森", "胜任力模型"],
+  "author": "数码墨水公司",
+  "license": "MIT"
+}

@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>胜任力模型 - 人才测评系统</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Microsoft YaHei', 'PingFang SC', Arial, sans-serif; background: #f5f7fa; color: #303133; }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+        }
+        .header h1 { font-size: 24px; }
+        .header nav { display: flex; gap: 20px; }
+        .header nav a {
+            color: white;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            transition: background 0.3s;
+        }
+        .header nav a:hover { background: rgba(255,255,255,0.2); }
+        .header nav a.active { background: rgba(255,255,255,0.3); }
+        
+        .container { max-width: 1400px; margin: 20px auto; padding: 0 20px; }
+        
+        .page-title {
+            font-size: 28px;
+            color: #303133;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #e4e7ed;
+        }
+        .tab {
+            padding: 12px 24px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s;
+            font-size: 16px;
+            color: #606266;
+        }
+        .tab:hover { color: #667eea; }
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            font-weight: bold;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+        }
+        
+        .card-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: #303133;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e4e7ed;
+        }
+        
+        .competency-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        .competency-card {
+            background: #f5f7fa;
+            border-radius: 8px;
+            padding: 16px;
+            border-left: 4px solid #667eea;
+            transition: all 0.3s;
+        }
+        .competency-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .competency-card h4 {
+            color: #303133;
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+        .competency-card .category {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+        .competency-card .definition {
+            color: #606266;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .job-model-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .job-model-table th {
+            background: #667eea;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 500;
+        }
+        .job-model-table td {
+            padding: 12px;
+            border-bottom: 1px solid #e4e7ed;
+        }
+        .job-model-table tr:hover {
+            background: #f5f7fa;
+        }
+        
+        .weight-bar {
+            background: #f0f2f5;
+            height: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+            width: 100px;
+            display: inline-block;
+        }
+        .weight-fill {
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            height: 100%;
+            transition: width 0.3s;
+        }
+        
+        .match-result {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .match-score {
+            font-size: 48px;
+            font-weight: bold;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .match-level {
+            text-align: center;
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .btn-primary:hover { background: #5a6fd6; }
+        .btn-success {
+            background: #67c23a;
+            color: white;
+        }
+        .btn-success:hover { background: #5daf34; }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #606266;
+            font-weight: 500;
+        }
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #dcdfe6;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .gap-item {
+            background: #fef0f0;
+            border-left: 4px solid #f56c6c;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #909399;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="header">
+            <h1>人才测评系统</h1>
+            <nav>
+                <a href="/index.html">🏠 首页</a>
+                <a href="/index.html" @click="goToPage('tools')">🔧 测评工具</a>
+                <a href="/index.html" @click="goToPage('projects')">📁 测评项目</a>
+                <a href="/index.html" @click="goToPage('reports')">📄 测评报告</a>
+                <a href="/nine-box-optimized.html">🗺️ 九宫格</a>
+                <a href="/competency-model.html" class="active">🎯 胜任力模型</a>
+            </nav>
+        </div>
+        
+        <div class="container">
+            <h2 class="page-title">胜任力模型管理（对标DDI & Korn Ferry）</h2>
+            
+            <div class="tabs">
+                <div class="tab" :class="{active: currentTab === 'dictionary'}" @click="currentTab = 'dictionary'">📚 胜任力词典</div>
+                <div class="tab" :class="{active: currentTab === 'jobModels'}" @click="currentTab = 'jobModels'">📋 岗位模型</div>
+                <div class="tab" :class="{active: currentTab === 'matching'}" @click="currentTab = 'matching'">🎯 人岗匹配</div>
+                <div class="tab" :class="{active: currentTab === 'overview'}" @click="currentTab = 'overview'">📊 模型概览</div>
+            </div>
+            
+            <!-- 胜任力词典 -->
+            <div v-show="currentTab === 'dictionary'">
+                <div class="card">
+                    <h3 class="card-title">胜任力词典（{{competencies.length}}个胜任力）</h3>
+                    <div class="competency-grid">
+                        <div v-for="comp in competencies" :key="comp.id" class="competency-card">
+                            <span class="category">{{comp.category}}</span>
+                            <h4>{{comp.competency_name}}</h4>
+                            <p class="definition">{{comp.definition}}</p>
+                            <div style="margin-top: 10px; font-size: 12px; color: #909399;">
+                                来源: {{comp.source}} | 代码: {{comp.competency_code}}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 岗位模型 -->
+            <div v-show="currentTab === 'jobModels'">
+                <div class="card">
+                    <h3 class="card-title">岗位胜任力模型</h3>
+                    
+                    <div class="form-group">
+                        <label>选择岗位类型：</label>
+                        <select v-model="selectedJobTypeId" @change="loadJobModel">
+                            <option value="">-- 请选择岗位 --</option>
+                            <option v-for="job in jobTypes" :key="job.id" :value="job.id">
+                                {{job.job_name}} ({{job.category}} - {{job.level}})
+                            </option>
+                        </select>
+                    </div>
+                    
+                    <div v-if="jobModel.length > 0">
+                        <table class="job-model-table">
+                            <thead>
+                                <tr>
+                                    <th>胜任力</th>
+                                    <th>类别</th>
+                                    <th>重要性权重</th>
+                                    <th>要求水平</th>
+                                    <th>是否核心</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="item in jobModel" :key="item.id">
+                                    <td><strong>{{item.competency_name}}</strong></td>
+                                    <td>{{item.category}}</td>
+                                    <td>
+                                        <div class="weight-bar">
+                                            <div class="weight-fill" :style="{width: item.importance_weight * 10 + '%'}"></div>
+                                        </div>
+                                        <span style="margin-left: 8px;">{{item.importance_weight}}/10</span>
+                                    </td>
+                                    <td>
+                                        <span v-for="n in 5" :key="n" style="color: #667eea; font-size: 18px;">
+                                            {{n <= item.required_level ? '★' : '☆'}}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span v-if="item.is_core === 1" style="color: #f56c6c; font-weight: bold;">核心</span>
+                                        <span v-else style="color: #909399;">辅助</span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div v-else-if="selectedJobTypeId" class="loading">
+                        请选择岗位类型查看胜任力模型
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 人岗匹配 -->
+            <div v-show="currentTab === 'matching'">
+                <div class="card">
+                    <h3 class="card-title">人岗匹配计算</h3>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
+                        <div class="form-group">
+                            <label>选择用户：</label>
+                            <select v-model="matchUserId">
+                                <option value="">-- 请选择用户 --</option>
+                                <option v-for="user in users" :key="user.id" :value="user.id">
+                                    {{user.real_name || user.username}}
+                                </option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>选择目标岗位：</label>
+                            <select v-model="matchJobTypeId">
+                                <option value="">-- 请选择岗位 --</option>
+                                <option v-for="job in jobTypes" :key="job.id" :value="job.id">
+                                    {{job.job_name}} ({{job.category}} - {{job.level}})
+                                </option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <button class="btn btn-primary" @click="calculateMatch" :disabled="!matchUserId || !matchJobTypeId">
+                        🎯 计算人岗匹配
+                    </button>
+                </div>
+                
+                <!-- 匹配结果 -->
+                <div v-if="matchResult" class="card">
+                    <div class="match-result">
+                        <h3 style="text-align: center;">人岗匹配结果</h3>
+                        <div class="match-score">{{matchResult.overallMatchScore}}分</div>
+                        <div class="match-level">匹配等级：{{matchResult.matchLevel}}</div>
+                    </div>
+                    
+                    <h4 style="margin-bottom: 15px;">各胜任力匹配详情：</h4>
+                    <table class="job-model-table">
+                        <thead>
+                            <tr>
+                                <th>胜任力</th>
+                                <th>当前得分</th>
+                                <th>要求水平</th>
+                                <th>匹配度</th>
+                                <th>差距</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="detail in matchResult.matchDetails" :key="detail.competencyId">
+                                <td><strong>{{detail.competencyName}}</strong></td>
+                                <td>
+                                    <span v-for="n in 5" :key="n" style="color: #667eea;">
+                                        {{n <= detail.score ? '★' : '☆'}}
+                                    </span>
+                                    ({{detail.score}})
+                                </td>
+                                <td>
+                                    <span v-for="n in 5" :key="n" style="color: #909399;">
+                                        {{n <= detail.requiredLevel ? '★' : '☆'}}
+                                    </span>
+                                    ({{detail.requiredLevel}})
+                                </td>
+                                <td>
+                                    <div class="weight-bar">
+                                        <div class="weight-fill" :style="{width: detail.matchScore + '%'}"></div>
+                                    </div>
+                                    <span style="margin-left: 8px;">{{detail.matchScore.toFixed(1)}}%</span>
+                                </td>
+                                <td>
+                                    <span v-if="detail.gap >= 0" style="color: #67c23a;">+{{detail.gap}} (超出)</span>
+                                    <span v-else style="color: #f56c6c;">{{detail.gap}} (不足)</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    
+                    <div v-if="matchResult.gaps.length > 0" style="margin-top: 30px;">
+                        <h4 style="margin-bottom: 15px; color: #f56c6c;">⚠️ 能力差距分析：</h4>
+                        <div v-for="(gap, index) in matchResult.gaps" :key="index" class="gap-item">
+                            {{gap.competencyName}}：当前水平 {{gap.score}}，要求水平 {{gap.requiredLevel}}，差距 {{gap.gap}}
+                        </div>
+                    </div>
+                    
+                    <div v-if="matchResult.recommendations.length > 0" style="margin-top: 30px;">
+                        <h4 style="margin-bottom: 15px; color: #667eea;">💡 改进建议：</h4>
+                        <ul style="padding-left: 20px;">
+                            <li v-for="(rec, index) in matchResult.recommendations" :key="index" style="margin-bottom: 10px;">
+                                {{rec}}
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 模型概览 -->
+            <div v-show="currentTab === 'overview'">
+                <div class="card">
+                    <h3 class="card-title">岗位胜任力模型概览</h3>
+                    
+                    <div v-for="job in modelsOverview" :key="job.jobTypeId" style="margin-bottom: 30px;">
+                        <h4 style="color: #667eea; margin-bottom: 15px;">
+                            {{job.jobName}} 
+                            <span style="font-size: 14px; color: #909399;">({{job.category}} - {{job.level}})</span>
+                        </h4>
+                        <table class="job-model-table">
+                            <thead>
+                                <tr>
+                                    <th>胜任力</th>
+                                    <th>重要性权重</th>
+                                    <th>要求水平</th>
+                                    <th>是否核心</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="comp in job.competencies" :key="comp.competencyName">
+                                    <td>{{comp.competencyName}}</td>
+                                    <td>{{comp.weight}}/10</td>
+                                    <td>
+                                        <span v-for="n in 5" :key="n">
+                                            {{n <= comp.requiredLevel ? '★' : '☆'}}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span v-if="comp.isCore" style="color: #f56c6c;">核心</span>
+                                        <span v-else>辅助</span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const { createApp, ref, onMounted } = Vue;
+        const app = createApp({
+            setup() {
+                const currentTab = ref('dictionary');
+                const competencies = ref([]);
+                const jobTypes = ref([]);
+                const users = ref([]);
+                const selectedJobTypeId = ref('');
+                const jobModel = ref([]);
+                const matchUserId = ref('');
+                const matchJobTypeId = ref('');
+                const matchResult = ref(null);
+                const modelsOverview = ref([]);
+                
+                // API请求头
+                const apiHeaders = () => {
+                    const token = localStorage.getItem('token');
+                    return token ? { 'Authorization': `Bearer ${token}` } : {};
+                };
+                
+                // 加载胜任力词典
+                const loadCompetencies = async () => {
+                    try {
+                        const resp = await axios.get('/api/competency/dictionary', { headers: apiHeaders() });
+                        if (resp.data.success) {
+                            competencies.value = resp.data.competencies;
+                        }
+                    } catch (err) {
+                        console.error('加载胜任力词典失败:', err);
+                    }
+                };
+                
+                // 加载岗位类型
+                const loadJobTypes = async () => {
+                    try {
+                        const resp = await axios.get('/api/competency/job-types', { headers: apiHeaders() });
+                        if (resp.data.success) {
+                            jobTypes.value = resp.data.jobTypes;
+                        }
+                    } catch (err) {
+                        console.error('加载岗位类型失败:', err);
+                    }
+                };
+                
+                // 加载用户列表
+                const loadUsers = async () => {
+                    try {
+                        const resp = await axios.get('/api/users', { headers: apiHeaders() });
+                        if (resp.data.success) {
+                            users.value = resp.data.users;
+                        }
+                    } catch (err) {
+                        console.error('加载用户失败:', err);
+                    }
+                };
+                
+                // 加载岗位胜任力模型
+                const loadJobModel = async () => {
+                    if (!selectedJobTypeId.value) {
+                        jobModel.value = [];
+                        return;
+                    }
+                    
+                    try {
+                        const resp = await axios.get(`/api/competency/models/${selectedJobTypeId.value}`, { headers: apiHeaders() });
+                        if (resp.data.success) {
+                            jobModel.value = resp.data.model;
+                        }
+                    } catch (err) {
+                        console.error('加载岗位模型失败:', err);
+                    }
+                };
+                
+                // 计算人岗匹配
+                const calculateMatch = async () => {
+                    if (!matchUserId.value || !matchJobTypeId.value) {
+                        alert('请选择用户和岗位');
+                        return;
+                    }
+                    
+                    try {
+                        const resp = await axios.post('/api/competency/match', {
+                            userId: matchUserId.value,
+                            jobTypeId: matchJobTypeId.value
+                        }, { headers: apiHeaders() });
+                        
+                        if (resp.data.success) {
+                            matchResult.value = resp.data.matchResult;
+                        }
+                    } catch (err) {
+                        console.error('计算匹配失败:', err);
+                        alert('计算失败: ' + (err.response?.data?.message || err.message));
+                    }
+                };
+                
+                // 加载模型概览
+                const loadOverview = async () => {
+                    try {
+                        const resp = await axios.get('/api/competency/models-overview', { headers: apiHeaders() });
+                        if (resp.data.success) {
+                            modelsOverview.value = resp.data.overview;
+                        }
+                    } catch (err) {
+                        console.error('加载概览失败:', err);
+                    }
+                };
+                
+                // 导航到首页
+                const goToPage = (page) => {
+                    localStorage.setItem('targetPage', page);
+                };
+                
+                onMounted(() => {
+                    loadCompetencies();
+                    loadJobTypes();
+                    loadUsers();
+                    loadOverview();
+                });
+                
+                return {
+                    currentTab,
+                    competencies,
+                    jobTypes,
+                    users,
+                    selectedJobTypeId,
+                    jobModel,
+                    matchUserId,
+                    matchJobTypeId,
+                    matchResult,
+                    modelsOverview,
+                    loadJobModel,
+                    calculateMatch,
+                    goToPage
+                };
+            }
+        });
+        
+        app.mount('#app');
+    </script>
+</body>
+</html>

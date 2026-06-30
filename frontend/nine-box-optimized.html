@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>人才九宫格 - 人才测评系统</title>
+    <script src="/libs/vue.global.js"></script>
+    <script src="/libs/axios.min.js"></script>
+    <script src="/libs/echarts.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f5f7fa; }
+        
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+        .header h1 { font-size: 20px; }
+        .header nav { display: flex; gap: 15px; }
+        .header nav a { color: white; text-decoration: none; padding: 8px 16px; border-radius: 6px; transition: all 0.3s; font-size: 14px; }
+        .header nav a:hover { background: rgba(255,255,255,0.2); }
+        .header nav a.active { background: rgba(255,255,255,0.3); }
+        
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        
+        .page-header { margin-bottom: 20px; }
+        .page-header h2 { font-size: 24px; color: #303133; margin-bottom: 8px; }
+        .page-header p { color: #606266; font-size: 14px; }
+        
+        .actions { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; transition: all 0.3s; display: inline-flex; align-items: center; gap: 5px; }
+        .btn-primary { background: #409eff; color: white; }
+        .btn-primary:hover { background: #66b1ff; }
+        .btn-success { background: #67c23a; color: white; }
+        .btn-success:hover { background: #85ce61; }
+        .btn-warning { background: #e6a23c; color: white; }
+        .btn-warning:hover { background: #ebb563; }
+        .btn-danger { background: #f56c6c; color: white; }
+        .btn-danger:hover { background: #f89898; }
+        .btn-info { background: #909399; color: white; }
+        .btn-info:hover { background: #a6a9ad; }
+        
+        .main-layout { display: flex; gap: 20px; }
+        
+        .grid-list-panel { flex: 0 0 350px; background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); max-height: calc(100vh - 180px); overflow-y: auto; }
+        .grid-list-panel h3 { font-size: 16px; color: #303133; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #409eff; }
+        
+        .grid-card { background: #f5f7fa; border-radius: 8px; padding: 15px; margin-bottom: 10px; cursor: pointer; transition: all 0.3s; border: 2px solid transparent; }
+        .grid-card:hover { background: #ecf5ff; border-color: #409eff; }
+        .grid-card.active { background: #ecf5ff; border-color: #409eff; }
+        .grid-card h4 { font-size: 15px; color: #303133; margin-bottom: 8px; }
+        .grid-card .meta { font-size: 12px; color: #909399; line-height: 1.6; }
+        .grid-card .meta span { margin-right: 15px; }
+        
+        .grid-detail-panel { flex: 1; }
+        
+        .grid-matrix-container { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .grid-matrix-container h3 { font-size: 16px; color: #303133; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #409eff; }
+        
+        .matrix-wrapper { display: flex; gap: 20px; }
+        
+        .grid-matrix { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 8px; width: 500px; height: 500px; }
+        
+        .grid-cell { border: 2px solid #dcdfe6; border-radius: 8px; padding: 10px; position: relative; cursor: pointer; transition: all 0.3s; overflow: hidden; }
+        .grid-cell:hover { border-color: #409eff; box-shadow: 0 2px 8px rgba(64,158,255,0.3); transform: translateY(-2px); }
+        
+        .grid-cell.cell-1 { background: linear-gradient(135deg, #fef0cd 0%, #fde2d9 100%); }
+        .grid-cell.cell-2 { background: linear-gradient(135deg, #fde2d9 0%, #fef0cd 100%); }
+        .grid-cell.cell-3 { background: linear-gradient(135deg, #fde2d9 0%, #f89898 100%); }
+        .grid-cell.cell-4 { background: linear-gradient(135deg, #e8f4e8 0%, #fef0cd 100%); }
+        .grid-cell.cell-5 { background: linear-gradient(135deg, #fef0cd 0%, #e8f4e8 100%); }
+        .grid-cell.cell-6 { background: linear-gradient(135deg, #fde2d9 0%, #fef0cd 100%); }
+        .grid-cell.cell-7 { background: linear-gradient(135deg, #d9ecd9 0%, #e8f4e8 100%); }
+        .grid-cell.cell-8 { background: linear-gradient(135deg, #e8f4e8 0%, #d9ecd9 100%); }
+        .grid-cell.cell-9 { background: linear-gradient(135deg, #cce5cc 0%, #e8f4e8 100%); }
+        
+        .cell-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+        .cell-quadrant { font-size: 11px; color: #909399; font-weight: bold; }
+        .cell-count { background: rgba(64,158,255,0.2); color: #409eff; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+        
+        .cell-employees { margin-top: 5px; max-height: 120px; overflow-y: auto; }
+        .employee-tag { background: rgba(64,158,255,0.15); color: #409eff; padding: 3px 8px; border-radius: 4px; font-size: 11px; margin: 2px; display: inline-block; cursor: pointer; transition: all 0.2s; }
+        .employee-tag:hover { background: #409eff; color: white; }
+        
+        .axis-labels { margin-top: 10px; text-align: center; }
+        .x-axis { font-size: 13px; color: #606266; font-weight: bold; }
+        .y-axis { position: relative; }
+        
+        .info-panel { flex: 1; background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); }
+        .info-panel h3 { font-size: 16px; color: #303133; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #409eff; }
+        
+        .employee-detail { margin-bottom: 20px; }
+        .employee-name { font-size: 18px; color: #303133; margin-bottom: 10px; }
+        .employee-info { font-size: 13px; color: #606266; line-height: 1.8; }
+        
+        .score-display { display: flex; gap: 15px; margin: 15px 0; }
+        .score-item { flex: 1; text-align: center; padding: 15px; background: #f5f7fa; border-radius: 8px; }
+        .score-value { font-size: 28px; font-weight: bold; color: #409eff; }
+        .score-label { font-size: 12px; color: #909399; margin-top: 5px; }
+        
+        .quadrant-legend { background: #f5f7fa; border-radius: 8px; padding: 15px; margin-top: 20px; }
+        .quadrant-legend h4 { font-size: 14px; color: #303133; margin-bottom: 10px; }
+        .legend-item { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 12px; color: #606266; }
+        .legend-color { width: 20px; height: 20px; border-radius: 4px; flex-shrink: 0; }
+        
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
+        .modal.active { display: flex; justify-content: center; align-items: center; }
+        .modal-content { background: white; border-radius: 12px; padding: 30px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; }
+        .modal-title { font-size: 20px; font-weight: bold; margin-bottom: 20px; color: #303133; }
+        
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; color: #606266; font-weight: 500; font-size: 14px; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 10px; border: 1px solid #dcdfe6; border-radius: 6px; font-size: 14px; transition: border-color 0.3s; }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: #409eff; outline: none; }
+        
+        .empty-state { text-align: center; padding: 60px 20px; color: #909399; }
+        .empty-state .icon { font-size: 48px; margin-bottom: 15px; opacity: 0.5; }
+        .empty-state p { font-size: 14px; }
+        
+        .loading { text-align: center; padding: 40px; color: #909399; }
+        .loading:after { content: '...'; animation: dots 1.5s steps(4, end) infinite; }
+        @keyframes dots { 0%, 20% { content: '.'; } 40% { content: '..'; } 60%, 100% { content: '...'; } }
+        
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; }
+        .badge-success { background: #f0f9eb; color: #67c23a; }
+        .badge-warning { background: #fdf6ec; color: #e6a23c; }
+        .badge-danger { background: #fef0f0; color: #f56c6c; }
+        
+        @media (max-width: 1200px) {
+            .main-layout { flex-direction: column; }
+            .grid-list-panel { flex: 1; max-height: none; }
+            .matrix-wrapper { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>人才测评系统</h1>
+        <nav>
+            <a href="/index.html" style="background: rgba(255,255,255,0.3); padding: 8px 16px; border-radius: 6px; margin-right: 10px;">⬅️ 返回首页</a>
+            <a href="/index.html">🏠 首页</a>
+            <a href="/index.html" onclick="localStorage.setItem('targetPage', 'tools')">🔧 测评工具</a>
+            <a href="/index.html" onclick="localStorage.setItem('targetPage', 'projects')">📁 测评项目</a>
+            <a href="/index.html" onclick="localStorage.setItem('targetPage', 'reports')">📄 测评报告</a>
+            <a href="/nine-box-optimized.html" class="active">🗺️ 九宫格</a>
+        </nav>
+    </div>
+
+    <div id="app">
+        <div class="container">
+            <div class="page-header">
+                <h2>人才九宫格</h2>
+                <p>基于绩效和潜力的九宫格人才盘点工具</p>
+            </div>
+
+            <div class="actions">
+                <button class="btn btn-primary" @click="showCreateModal = true">✏️ 创建九宫格</button>
+                <button class="btn btn-success" @click="batchCalculate" :disabled="!currentGrid">📊 批量计算潜力</button>
+                <button class="btn btn-warning" @click="syncPerformance" :disabled="!currentGrid">🔄 同步绩效</button>
+                <button class="btn btn-info" @click="exportGrid" :disabled="!currentGrid">🖨️ 打印报告</button>
+            </div>
+
+            <div class="main-layout">
+                <!-- 左侧：九宫格列表 -->
+                <div class="grid-list-panel">
+                    <h3>📋 九宫格列表</h3>
+                    
+                    <div v-if="loading" class="loading">加载中</div>
+                    
+                    <div v-else-if="grids.length === 0" class="empty-state">
+                        <div class="icon">📭</div>
+                        <p>暂无九宫格</p>
+                        <p style="margin-top: 10px;">点击"创建九宫格"开始</p>
+                    </div>
+                    
+                    <div v-else>
+                        <div v-for="grid in grids" :key="grid.id" 
+                             :class="['grid-card', currentGrid && currentGrid.id === grid.id ? 'active' : '']"
+                             @click="selectGrid(grid)">
+                            <h4>{{ grid.grid_name }}</h4>
+                            <div class="meta">
+                                <div><span>📅 {{ grid.review_period || '未设置周期' }}</span></div>
+                                <div><span>👥 {{ grid.employee_count || 0 }} 名员工</span> <span>📌 {{ grid.status === 'draft' ? '草稿' : '已发布' }}</span></div>
+                                <div>创建于 {{ formatDate(grid.created_at) }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 右侧：九宫格详情 -->
+                <div class="grid-detail-panel" v-if="currentGrid">
+                    <div class="grid-matrix-container">
+                        <h3>🗺️ {{ currentGrid.grid_name }} - 九宫格矩阵</h3>
+                        
+                        <div class="matrix-wrapper">
+                            <div>
+                                <div class="grid-matrix">
+                                    <div v-for="cell in gridCells" :key="cell.id" 
+                                         :class="'grid-cell cell-' + cell.id"
+                                         @click="selectCell(cell)">
+                                        <div class="cell-header">
+                                            <div class="cell-quadrant">格子 {{ cell.id }}</div>
+                                            <div class="cell-count">{{ cell.employees.length }} 人</div>
+                                        </div>
+                                        <div class="cell-employees">
+                                            <span v-for="emp in cell.employees" :key="emp.user_id" 
+                                                  class="employee-tag"
+                                                  @click.stop="selectEmployee(emp)">
+                                                {{ emp.real_name }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="axis-labels">
+                                    <div class="x-axis">⬅ 绩效分数（低 → 高）➡</div>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <div class="y-axis" style="writing-mode: vertical-rl; text-orientation: mixed; margin-top: 200px; font-weight: bold; color: #606266;">⬆ 潜力分数（高 → 低）⬇</div>
+                            </div>
+                            
+                            <div class="info-panel">
+                                <h3>📊 格子说明</h3>
+                                
+                                <div v-if="selectedEmployee">
+                                    <div class="employee-detail">
+                                        <div class="employee-name">{{ selectedEmployee.real_name }}</div>
+                                        <div class="employee-info">
+                                            <div>部门：{{ selectedEmployee.department || '未设置' }}</div>
+                                            <div>职位：{{ selectedEmployee.position || '未设置' }}</div>
+                                        </div>
+                                        
+                                        <div class="score-display">
+                                            <div class="score-item">
+                                                <div class="score-value">{{ selectedEmployee.performance_score || '-' }}</div>
+                                                <div class="score-label">绩效分数</div>
+                                            </div>
+                                            <div class="score-item">
+                                                <div class="score-value">{{ selectedEmployee.potential_score || '-' }}</div>
+                                                <div class="score-label">潜力分数</div>
+                                            </div>
+                                        </div>
+                                        
+                                        <button class="btn btn-primary" @click="viewAssessment(selectedEmployee)" style="width: 100%;">查看测评详情</button>
+                                    </div>
+                                </div>
+                                
+                                <div v-else class="empty-state" style="padding: 30px;">
+                                    <p>点击员工标签查看详细信息</p>
+                                </div>
+                                
+                                <div class="quadrant-legend">
+                                    <h4>九宫格解读</h4>
+                                    <div class="legend-item">
+                                        <div class="legend-color" style="background: #cce5cc;"></div>
+                                        <span><strong>格子9（超级明星）</strong>：高潜力+高绩效，重点保留和快速发展</span>
+                                    </div>
+                                    <div class="legend-item">
+                                        <div class="legend-color" style="background: #e8f4e8;"></div>
+                                        <span><strong>格子8、7（核心人才）</strong>：绩效稳定，组织的中坚力量</span>
+                                    </div>
+                                    <div class="legend-item">
+                                        <div class="legend-color" style="background: #fef0cd;"></div>
+                                        <span><strong>格子5（中坚力量）</strong>：中等潜力和绩效，需要发展</span>
+                                    </div>
+                                    <div class="legend-item">
+                                        <div class="legend-color" style="background: #fde2d9;"></div>
+                                        <span><strong>格子3、6（待改进）</strong>：需要绩效改进或潜力开发</span>
+                                    </div>
+                                    <div class="legend-item">
+                                        <div class="legend-color" style="background: #f89898;"></div>
+                                        <span><strong>格子1（问题员工）</strong>：低潜力+低绩效，需要改进或淘汰</span>
+                                    </div>
+                                </div>
+                                
+                                <button class="btn btn-success" @click="showAddModal = true" style="width: 100%; margin-top: 20px;">➕ 添加员工到九宫格</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div v-else class="grid-detail-panel">
+                    <div class="empty-state">
+                        <div class="icon">🎯</div>
+                        <p>请从左侧选择一个九宫格查看详情</p>
+                        <p style="margin-top: 10px;">或创建新的九宫格开始人才盘点</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 创建九宫格弹窗 -->
+        <div :class="['modal', showCreateModal ? 'active' : '']">
+            <div class="modal-content">
+                <div class="modal-title">创建九宫格</div>
+                
+                <div class="form-group">
+                    <label>九宫格名称 *</label>
+                    <input v-model="newGrid.grid_name" placeholder="例如：2026年上半年人才盘点">
+                </div>
+                
+                <div class="form-group">
+                    <label>评估类型</label>
+                    <select v-model="newGrid.grid_type">
+                        <option value="talent_review">人才盘点</option>
+                        <option value="succession_planning">继任计划</option>
+                        <option value="high_potential">高潜人才</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>评估周期</label>
+                    <input v-model="newGrid.review_period" placeholder="例如：2026-H1 或 2026上半年">
+                </div>
+                
+                <div class="form-group">
+                    <label>描述</label>
+                    <textarea v-model="newGrid.description" rows="3" placeholder="九宫格评估的目的和范围（选填）"></textarea>
+                </div>
+                
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button class="btn" @click="showCreateModal = false" style="background: #f5f7fa;">取消</button>
+                    <button class="btn btn-primary" @click="createGrid">创建</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 添加员工弹窗 -->
+        <div :class="['modal', showAddModal ? 'active' : '']">
+            <div class="modal-content">
+                <div class="modal-title">添加员工到九宫格</div>
+                
+                <div class="form-group">
+                    <label>选择员工 *</label>
+                    <select v-model="newEmployee.user_id">
+                        <option value="">请选择员工</option>
+                        <option v-for="user in users" :key="user.id" :value="user.id">
+                            {{ user.real_name }} ({{ user.username }}) - {{ user.department || '未设置部门' }}
+                        </option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>绩效分数 (1-5分)</label>
+                    <input v-model="newEmployee.performance_score" type="number" min="1" max="5" step="0.1" placeholder="1=低绩效, 5=高绩效">
+                    <small style="color: #909399; margin-top: 5px; display: block;">留空则自动从绩效记录中获取</small>
+                </div>
+                
+                <div class="form-group">
+                    <label>潜力分数 (1-5分)</label>
+                    <input v-model="newEmployee.potential_score" type="number" min="1" max="5" step="0.1" placeholder="自动计算">
+                    <small style="color: #909399; margin-top: 5px; display: block;">留空则根据测评数据自动计算</small>
+                </div>
+                
+                <div class="form-group">
+                    <label>备注</label>
+                    <textarea v-model="newEmployee.notes" rows="2" placeholder="员工评估备注（选填）"></textarea>
+                </div>
+                
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button class="btn" @click="showAddModal = false" style="background: #f5f7fa;">取消</button>
+                    <button class="btn btn-primary" @click="addEmployee">添加</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const grids = ref([]);
+                const currentGrid = ref(null);
+                const selectedEmployee = ref(null);
+                const showCreateModal = ref(false);
+                const showAddModal = ref(false);
+                const users = ref([]);
+                const loading = ref(false);
+                
+                const newGrid = ref({
+                    grid_name: '',
+                    grid_type: 'talent_review',
+                    review_period: '',
+                    description: ''
+                });
+                
+                const newEmployee = ref({
+                    user_id: '',
+                    performance_score: '',
+                    potential_score: '',
+                    notes: ''
+                });
+
+                // 九宫格单元格计算
+                const gridCells = computed(() => {
+                    const cells = [];
+                    for (let i = 1; i <= 9; i++) {
+                        const row = Math.ceil(i / 3);
+                        const col = (i - 1) % 3 + 1;
+                        
+                        const employees = currentGrid.value && currentGrid.value.positions ? 
+                            currentGrid.value.positions.filter(p => p.quadrant === i) : [];
+                        
+                        cells.push({
+                            id: i,
+                            row: row,
+                            col: col,
+                            employees: employees
+                        });
+                    }
+                    return cells;
+                });
+
+                // API请求头
+                function apiHeaders() {
+                    return { 
+                        'Authorization': 'Bearer ' + (localStorage.getItem('tas_token') || localStorage.getItem('token') || ''),
+                        'Content-Type': 'application/json'
+                    };
+                }
+
+                // 加载九宫格列表
+                async function loadGrids() {
+                    loading.value = true;
+                    try {
+                        const resp = await axios.get('/api/nine-box/grids', { headers: apiHeaders() });
+                        if (resp.data.success) {
+                            grids.value = resp.data.grids;
+                        }
+                    } catch (error) {
+                        console.error('加载九宫格失败', error);
+                        alert('加载九宫格列表失败：' + (error.response && error.response.data ? error.response.data.message : error.message));
+                    } finally {
+                        loading.value = false;
+                    }
+                }
+
+                // 创建九宫格
+                async function createGrid() {
+                    if (!newGrid.value.grid_name) {
+                        alert('请输入九宫格名称');
+                        return;
+                    }
+                    
+                    try {
+                        const resp = await axios.post('/api/nine-box/grids', newGrid.value, { headers: apiHeaders() });
+                        if (resp.data.success) {
+                            alert('✅ 九宫格创建成功！');
+                            showCreateModal.value = false;
+                            newGrid.value = { grid_name: '', grid_type: 'talent_review', review_period: '', description: '' };
+                            await loadGrids();
+                        } else {
+                            alert('❌ ' + resp.data.message);
+                        }
+                    } catch (error) {
+                        alert('❌ 创建失败：' + (error.response && error.response.data ? error.response.data.message : error.message));
+                    }
+                }
+
+                // 选择九宫格
+                async function selectGrid(grid) {
+                    try {
+                        // 加载九宫格详情
+                        const resp = await axios.get('/api/nine-box/grids/' + grid.id, { headers: apiHeaders() });
+                        if (resp.data.success) {
+                            currentGrid.value = resp.data.grid;
+                            selectedEmployee.value = null;
+                            
+                            // 加载员工位置数据
+                            const posResp = await axios.get('/api/nine-box/grids/' + grid.id + '/positions', { headers: apiHeaders() });
+                            if (posResp.data.success) {
+                                currentGrid.value.positions = posResp.data.positions || [];
+                                console.log('加载了', currentGrid.value.positions.length, '个员工位置');
+                            }
+                        }
+                    } catch (error) {
+                        console.error('加载九宫格详情失败', error);
+                        alert('加载九宫格详情失败：' + (error.response && error.response.data ? error.response.data.message : error.message));
+                    }
+                }
+
+                // 选择单元格
+                function selectCell(cell) {
+                    if (cell.employees.length > 0) {
+                        selectEmployee(cell.employees[0]);
+                    }
+                }
+
+                // 选择员工
+                function selectEmployee(emp) {
+                    selectedEmployee.value = emp;
+                }
+
+                // 显示添加员工弹窗
+                async function showAddEmployee() {
+                    try {
+                        const resp = await axios.get('/api/users', { headers: apiHeaders() });
+                        if (resp.data.success) {
+                            users.value = resp.data.users || [];
+                        }
+                    } catch (error) {
+                        console.error('加载用户列表失败', error);
+                    }
+                    
+                    newEmployee.value = { user_id: '', performance_score: '', potential_score: '', notes: '' };
+                    showAddModal.value = true;
+                }
+
+                // 添加员工
+                async function addEmployee() {
+                    if (!newEmployee.value.user_id) {
+                        alert('请选择员工');
+                        return;
+                    }
+                    
+                    try {
+                        const data = {
+                            user_id: parseInt(newEmployee.value.user_id),
+                            performance_score: newEmployee.value.performance_score ? parseFloat(newEmployee.value.performance_score) : null,
+                            potential_score: newEmployee.value.potential_score ? parseFloat(newEmployee.value.potential_score) : null,
+                            notes: newEmployee.value.notes
+                        };
+                        
+                        const resp = await axios.post('/api/nine-box/grids/' + currentGrid.value.id + '/positions', data, { headers: apiHeaders() });
+                        if (resp.data.success) {
+                            alert('✅ 员工添加成功！');
+                            showAddModal.value = false;
+                            await selectGrid(currentGrid.value);
+                        } else {
+                            alert('❌ ' + resp.data.message);
+                        }
+                    } catch (error) {
+                        alert('❌ 添加失败：' + (error.response && error.response.data ? error.response.data.message : error.message));
+                    }
+                }
+
+                // 批量计算潜力分数
+                async function batchCalculate() {
+                    if (!currentGrid.value) {
+                        alert('请先选择九宫格');
+                        return;
+                    }
+                    
+                    if (!confirm('将根据测评数据自动计算所有员工的潜力分数，是否继续？')) {
+                        return;
+                    }
+                    
+                    try {
+                        const resp = await axios.post('/api/nine-box/batch-calculate-potential', 
+                            { grid_id: currentGrid.value.id }, 
+                            { headers: apiHeaders() });
+                        if (resp.data.success) {
+                            alert('✅ ' + resp.data.message);
+                            await selectGrid(currentGrid.value);
+                        } else {
+                            alert('❌ ' + resp.data.message);
+                        }
+                    } catch (error) {
+                        alert('❌ 计算失败：' + (error.response && error.response.data ? error.response.data.message : error.message));
+                    }
+                }
+
+                // 同步绩效数据
+                async function syncPerformance() {
+                    if (!currentGrid.value) {
+                        alert('请先选择九宫格');
+                        return;
+                    }
+                    
+                    if (!confirm('将从绩效记录中同步最新绩效数据到九宫格，是否继续？')) {
+                        return;
+                    }
+                    
+                    try {
+                        const resp = await axios.post('/api/nine-box/sync-performance', 
+                            { grid_id: currentGrid.value.id }, 
+                            { headers: apiHeaders() });
+                        if (resp.data.success) {
+                            alert('✅ ' + resp.data.message);
+                            await selectGrid(currentGrid.value);
+                        } else {
+                            alert('❌ ' + resp.data.message);
+                        }
+                    } catch (error) {
+                        alert('❌ 同步失败：' + (error.response && error.response.data ? error.response.data.message : error.message));
+                    }
+                }
+
+                // 查看测评详情
+                function viewAssessment(emp) {
+                    window.open('/report.html?userId=' + emp.user_id, '_blank');
+                }
+
+                // 导出九宫格数据
+                function printGrid() {
+                    if (!currentGrid.value || !currentGrid.value.id) {
+                        alert('请先选择九宫格');
+                        return;
+                    }
+
+                    const token = localStorage.getItem('tas_token') || localStorage.getItem('token');
+                    if (!token) {
+                        alert('请先登录');
+                        return;
+                    }
+                    
+                    // 在新窗口打开打印报告
+                    const exportWindow = window.open(`/api/nine-box/grids/${currentGrid.value.id}/export?token=${token}`, '_blank');
+                    if (!exportWindow) {
+                        alert('请允许浏览器打开弹出窗口');
+                    }
+                }
+
+                // 格式化日期
+                function formatDate(dateStr) {
+                    if (!dateStr) return '';
+                    const d = new Date(dateStr);
+                    return d.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+                }
+
+                onMounted(() => {
+                    // 检查是否有有效的登录token
+                    const savedToken = localStorage.getItem('tas_token') || localStorage.getItem('token');
+                    if (!savedToken) {
+                        alert('请先登录系统');
+                        window.location.href = '/index.html';
+                        return;
+                    }
+                    loadGrids();
+                });
+
+                return {
+                    grids,
+                    currentGrid,
+                    selectedEmployee,
+                    showCreateModal,
+                    showAddModal,
+                    users,
+                    loading,
+                    newGrid,
+                    newEmployee,
+                    gridCells,
+                    loadGrids,
+                    createGrid,
+                    selectGrid,
+                    selectCell,
+                    selectEmployee,
+                    showAddEmployee,
+                    addEmployee,
+                    batchCalculate,
+                    syncPerformance,
+                    viewAssessment,
+                    exportGrid: printGrid,
+                    formatDate
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

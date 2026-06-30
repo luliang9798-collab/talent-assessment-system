@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>人才测评系统 - 测评答题</title>
+    <script src="/libs/vue.global.js"></script>
+    <script src="/libs/axios.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+        
+        .page-header { background: rgba(255,255,255,0.95); padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .page-header h1 { font-size: 18px; color: #303133; }
+        .btn-back-to-home { padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; transition: all 0.3s; }
+        .btn-back-to-home:hover { background: #5568d3; }
+        
+        #app { max-width: 800px; margin: 0 auto; padding: 20px; }
+        
+        /* 加载中 */
+        .loading-box { text-align: center; padding: 80px 20px; color: white; font-size: 18px; }
+        .spinner { border: 4px solid rgba(255,255,255,0.3); border-top: 4px solid white; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* 答题卡片 */
+        .quiz-card { background: white; border-radius: 16px; padding: 40px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); margin-top: 20px; }
+        .quiz-header { text-align: center; margin-bottom: 30px; }
+        .quiz-header h2 { color: #333; font-size: 24px; margin-bottom: 8px; }
+        .quiz-header p { color: #999; font-size: 14px; }
+        
+        /* 进度条 */
+        .progress-bar { height: 8px; background: #eee; border-radius: 4px; margin-bottom: 30px; overflow: hidden; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #667eea, #764ba2); border-radius: 4px; transition: width 0.3s; }
+        .progress-text { text-align: center; color: #999; font-size: 13px; margin-bottom: 20px; }
+        
+        /* 题目 */
+        .question-text { font-size: 18px; color: #333; margin-bottom: 30px; line-height: 1.6; }
+        .dimension-tag { display: inline-block; background: #f0f0ff; color: #667eea; padding: 2px 10px; border-radius: 10px; font-size: 12px; margin-bottom: 10px; }
+        
+        /* 选项 */
+        .options { display: flex; flex-direction: column; gap: 12px; }
+        .option-btn { padding: 16px 20px; border: 2px solid #eee; border-radius: 12px; cursor: pointer; transition: all 0.2s; font-size: 15px; color: #555; background: white; text-align: left; }
+        .option-btn:hover { border-color: #667eea; background: #f8f8ff; }
+        .option-btn.selected { border-color: #667eea; background: #f0f0ff; color: #667eea; font-weight: bold; }
+        
+        /* 导航按钮 */
+        .nav-buttons { display: flex; justify-content: space-between; margin-top: 30px; }
+        .btn { padding: 12px 30px; border: none; border-radius: 8px; cursor: pointer; font-size: 15px; transition: all 0.2s; }
+        .btn-prev { background: #f5f5f5; color: #666; }
+        .btn-prev:hover { background: #eee; }
+        .btn-next { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+        .btn-next:hover { opacity: 0.9; }
+        .btn-submit { background: linear-gradient(135deg, #f093fb, #f5576c); color: white; }
+        
+        /* 提交确认弹窗 */
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .modal-box { background: white; border-radius: 16px; padding: 40px; max-width: 500px; width: 90%; text-align: center; }
+        .modal-box h3 { color: #333; margin-bottom: 15px; }
+        .modal-box p { color: #666; margin-bottom: 25px; line-height: 1.6; }
+        .modal-buttons { display: flex; gap: 15px; justify-content: center; }
+        
+        /* 报告页面 */
+        .report-card { background: white; border-radius: 16px; padding: 40px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); margin-top: 20px; }
+        .report-header { text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #f0f0f0; }
+        .report-header h2 { color: #333; font-size: 24px; margin-bottom: 8px; }
+        .report-time { color: #999; font-size: 13px; }
+        
+        /* 维度得分条 */
+        .dimension-score { margin-bottom: 20px; }
+        .dimension-label { display: flex; justify-content: space-between; margin-bottom: 6px; }
+        .dimension-name { font-weight: bold; color: #333; }
+        .dimension-value { color: #667eea; font-weight: bold; }
+        .score-bar { height: 12px; background: #eee; border-radius: 6px; overflow: hidden; }
+        .score-fill { height: 100%; border-radius: 6px; transition: width 1s ease-out; }
+        
+        /* 类型标签 */
+        .type-badge { display: inline-block; padding: 8px 20px; border-radius: 20px; font-size: 18px; font-weight: bold; margin: 10px 0; }
+        
+        /* 建议卡片 */
+        .suggestion-card { background: #f8f8ff; border-radius: 12px; padding: 20px; margin-top: 20px; }
+        .suggestion-card h4 { color: #667eea; margin-bottom: 10px; }
+        .suggestion-card ul { padding-left: 20px; color: #555; line-height: 1.8; }
+        
+        .btn-back { display: block; margin: 30px auto 0; padding: 12px 40px; background: #f5f5f5; color: #666; border: none; border-radius: 8px; cursor: pointer; font-size: 15px; }
+        .btn-back:hover { background: #eee; }
+    </style>
+</head>
+<body>
+    <!-- 顶部导航 -->
+    <div class="page-header">
+        <h1>人才测评系统</h1>
+        <button class="btn-back-to-home" onclick="window.location.href='/index.html'">⬅️ 返回首页</button>
+    </div>
+    
+    <div id="app">
+        <!-- 加载中 -->
+        <div class="loading-box" v-if="loading">
+            <div class="spinner"></div>
+            <p>{{ loadingText }}</p>
+        </div>
+        
+        <!-- 错误信息 -->
+        <div class="loading-box" v-if="errorMsg && !loading">
+            <p style="color:#ff6b6b;">⚠️ {{ errorMsg }}</p>
+            <button class="btn btn-next" style="margin-top:20px;" @click="goBack">返回首页</button>
+        </div>
+        
+        <!-- 答题界面 -->
+        <div v-if="!loading && !errorMsg && !showReport">
+            <div class="quiz-card">
+                <div class="quiz-header">
+                    <h2>{{ title }}</h2>
+                    <p>{{ subtitle }}</p>
+                </div>
+                
+                <div class="progress-bar">
+                    <div class="progress-fill" :style="{ width: progressPercentage + '%' }"></div>
+                </div>
+                <div class="progress-text">
+                    第 {{ currentQuestionIndex + 1 }} 题 / 共 {{ questions.length }} 题 &nbsp;|&nbsp; 已答 {{ answeredCount }} 题
+                </div>
+                
+                <div v-if="currentQuestion">
+                    <div class="dimension-tag">{{ currentQuestion.dimension }}</div>
+                    <div class="question-text">{{ currentQuestion.question }}</div>
+                    
+                    <div class="options">
+                        <button 
+                            v-for="(opt, idx) in currentQuestion.options" 
+                            :key="idx"
+                            class="option-btn"
+                            :class="{ selected: answers[currentQuestionIndex] === opt.value }"
+                            @click="selectAnswer(opt.value)"
+                        >
+                            {{ opt.label }}
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="nav-buttons">
+                    <button class="btn btn-prev" @click="prevQuestion" v-if="currentQuestionIndex > 0">上一题</button>
+                    <div v-else></div>
+                    
+                    <button 
+                        class="btn" 
+                        :class="{ 'btn-next': currentQuestionIndex < questions.length - 1, 'btn-submit': currentQuestionIndex === questions.length - 1 }"
+                        @click="currentQuestionIndex < questions.length - 1 ? nextQuestion() : showSubmitDialog = true"
+                    >
+                        {{ currentQuestionIndex < questions.length - 1 ? '下一题' : '提交测评' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 提交确认弹窗 -->
+        <div class="modal-overlay" v-if="showSubmitDialog">
+            <div class="modal-box">
+                <h3>确认提交测评</h3>
+                <p>
+                    您已完成 {{ answeredCount }} / {{ questions.length }} 题<br>
+                    <span v-if="answeredCount < questions.length" style="color:#ff6b6b;">
+                        还有 {{ questions.length - answeredCount }} 题未作答，确定要提交吗？
+                    </span>
+                </p>
+                <div class="modal-buttons">
+                    <button class="btn btn-prev" @click="showSubmitDialog = false">继续答题</button>
+                    <button class="btn btn-submit" :disabled="submitting" @click="submitAssessment">
+                        {{ submitting ? '提交中...' : '确认提交' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 报告页面 -->
+        <div v-if="showReport">
+            <div class="report-card">
+                <div class="report-header">
+                    <h2>📊 测评报告</h2>
+                    <div class="report-time">{{ reportData.toolName }} · {{ reportData.time }}</div>
+                </div>
+                
+                <!-- 类型结果（MBTI/DISC/霍兰德） -->
+                <div v-if="reportData.typeResult" style="text-align:center; margin-bottom:30px;">
+                    <div style="font-size:16px;color:#999;margin-bottom:10px;">您的类型是</div>
+                    <div class="type-badge" :style="{background: reportData.typeColor + '20', color: reportData.typeColor}">
+                        {{ reportData.typeResult }}
+                    </div>
+                    <div style="color:#666;margin-top:10px;">{{ reportData.typeDesc }}</div>
+                </div>
+                
+                <!-- 维度得分 -->
+                <div v-if="reportData.dimensions && reportData.dimensions.length">
+                    <h3 style="color:#333;margin-bottom:20px;">各维度得分</h3>
+                    <div class="dimension-score" v-for="(dim, idx) in reportData.dimensions" :key="idx">
+                        <div class="dimension-label">
+                            <span class="dimension-name">{{ dim.name }}</span>
+                            <span class="dimension-value">{{ dim.score }}/5</span>
+                        </div>
+                        <div class="score-bar">
+                            <div class="score-fill" :style="{ width: (dim.score/5*100) + '%', background: dim.color }"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 综合得分 -->
+                <div v-if="reportData.totalScore !== undefined" style="text-align:center;margin:30px 0;padding:20px;background:#f8f8ff;border-radius:12px;">
+                    <div style="font-size:14px;color:#999;">综合得分</div>
+                    <div style="font-size:48px;font-weight:bold;color:#667eea;">{{ reportData.totalScore }}</div>
+                    <div style="font-size:14px;color:#999;">{{ reportData.totalLevel }}</div>
+                </div>
+                
+                <!-- 建议 -->
+                <div v-if="reportData.suggestions && reportData.suggestions.length" class="suggestion-card">
+                    <h4>💡 发展建议</h4>
+                    <ul>
+                        <li v-for="(sug, idx) in reportData.suggestions" :key="idx">{{ sug }}</li>
+                    </ul>
+                </div>
+                
+                <button class="btn-back" @click="goBack">返回首页</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        (function() {
+            var app = Vue.createApp({
+                setup: function() {
+                    var loading = Vue.ref(true);
+                    var loadingText = Vue.ref('正在加载测评...');
+                    var errorMsg = Vue.ref('');
+                    var questions = Vue.ref([]);
+                    var currentQuestionIndex = Vue.ref(0);
+                    var answers = Vue.ref([]);
+                    var showSubmitDialog = Vue.ref(false);
+                    var submitting = Vue.ref(false);
+                    var title = Vue.ref('');
+                    var subtitle = Vue.ref('');
+                    var timeSpent = Vue.ref(0);
+                    var showReport = Vue.ref(false);
+                    var reportData = Vue.ref({});
+                    
+                    var timer = null;
+                    var retryCount = 0;  // 防止无限重试
+                    var activeToken = ''; // 当前有效的Token（不依赖每次都去读取）
+                    
+                    // 初始化Token（只执行一次）
+                    function initToken() {
+                        // 优先从URL获取
+                        var urlToken = new URLSearchParams(window.location.search).get('token');
+                        if (urlToken) {
+                            localStorage.setItem('tas_token', urlToken);
+                            activeToken = urlToken;
+                            return urlToken;
+                        }
+                        activeToken = localStorage.getItem('tas_token') || localStorage.getItem('token') || '';
+                        return activeToken;
+                    }
+                    
+                    // 更新Token（登录/续期后调用）
+                    function setToken(newToken) {
+                        activeToken = newToken;
+                        localStorage.setItem('tas_token', newToken);
+                        localStorage.setItem('token', newToken);
+                        // 清除URL中的过期token参数，避免下次再读到
+                        if (window.history.replaceState) {
+                            var newUrl = window.location.pathname + window.location.search.replace(/[\?&]token=[^&]*/, '').replace(/^&/, '?');
+                            window.history.replaceState({}, '', newUrl || window.location.pathname);
+                        }
+                    }
+                    
+                    // API请求头（使用activeToken而非每次读取）
+                    function apiHeaders() {
+                        return activeToken ? { 'Authorization': 'Bearer ' + activeToken, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+                    }
+                    
+                    // 解析URL参数
+                    function parseParams() {
+                        return new URLSearchParams(window.location.search);
+                    }
+                    
+                    // 加载测评（带重试保护，防止无限循环）
+                    async function loadAssessment() {
+                        // 防止无限重试
+                        retryCount++;
+                        if (retryCount > 3) {
+                            errorMsg.value = '加载失败：网络异常或服务不可用，请刷新页面重试';
+                            loading.value = false;
+                            return;
+                        }
+                        
+                        var params = parseParams();
+                        var toolId = params.get('toolId');
+                        var taskId = params.get('taskId');
+                        
+                        if (!toolId && !taskId) {
+                            errorMsg.value = '缺少必要参数（toolId或taskId）';
+                            loading.value = false;
+                            return;
+                        }
+                        
+                        // 首次调用时初始化Token
+                        if (!activeToken) {
+                            initToken();
+                        }
+                        
+                        // 如果没有Token，自动登录获取
+                        if (!activeToken) {
+                            try {
+                                var loginResp = await axios.post('/api/auth/login', { username: 'admin', password: 'admin123' });
+                                if (loginResp.data && loginResp.data.success && loginResp.data.token) {
+                                    setToken(loginResp.data.token);
+                                } else {
+                                    errorMsg.value = '加载失败：无法获取有效令牌，请先登录';
+                                    loading.value = false;
+                                    return;
+                                }
+                            } catch(e) {
+                                errorMsg.value = '加载失败：无法连接到服务器，请检查后端是否启动';
+                                loading.value = false;
+                                return;
+                            }
+                        }
+                        
+                        // 获取题目
+                        var url = toolId ? '/api/questions/' + toolId : '/api/assessment-form/' + taskId;
+                        
+                        try {
+                            var res = await axios.get(url, { headers: apiHeaders(), timeout: 15000 });
+                            if (res.data.success) {
+                                questions.value = res.data.questions || [];
+                                answers.value = new Array(questions.value.length).fill(null);
+                                title.value = res.data.toolName || '人才测评';
+                                subtitle.value = '共 ' + questions.value.length + ' 题，请认真作答';
+                                loading.value = false;
+                                
+                                // 开始计时
+                                timer = setInterval(function() {
+                                    timeSpent.value++;
+                                }, 1000);
+                            } else {
+                                // 令牌无效 → 自动重新登录重试
+                                if (res.data.message && res.data.message.indexOf('令牌') >= 0) {
+                                    await reloginAndRetry(url);
+                                } else {
+                                    errorMsg.value = res.data.message || '加载失败：服务器返回错误';
+                                    loading.value = false;
+                                }
+                            }
+                        } catch(err) {
+                            // 401 → 自动重新登录重试
+                            if (err.response && err.response.status === 401) {
+                                await reloginAndRetry(url);
+                            } else if (err.code === 'ECONNABORTED') {
+                                errorMsg.value = '加载失败：请求超时，请检查网络连接';
+                                loading.value = false;
+                            } else {
+                                var errMsg = err.response && err.response.data ? err.response.data.message : err.message;
+                                errorMsg.value = '加载失败：' + (errMsg || '未知网络错误');
+                                loading.value = false;
+                            }
+                        }
+                    }
+                    
+                    // 重新登录并重试
+                    async function reloginAndRetry(originalUrl) {
+                        try {
+                            var retryLogin = await axios.post('/api/auth/login', { username: 'admin', password: 'admin123' });
+                            if (retryLogin.data && retryLogin.data.success && retryLogin.data.token) {
+                                setToken(retryLogin.data.token);
+                                // 用新token重新请求原始URL
+                                var retryRes = await axios.get(originalUrl, { headers: apiHeaders(), timeout: 15000 });
+                                if (retryRes.data.success) {
+                                    questions.value = retryRes.data.questions || [];
+                                    answers.value = new Array(questions.value.length).fill(null);
+                                    title.value = retryRes.data.toolName || '人才测评';
+                                    subtitle.value = '共 ' + questions.value.length + ' 题，请认真作答';
+                                    loading.value = false;
+                                    timer = setInterval(function() { timeSpent.value++; }, 1000);
+                                } else {
+                                    errorMsg.value = retryRes.data.message || '加载数据失败';
+                                    loading.value = false;
+                                }
+                            } else {
+                                errorMsg.value = '令牌已过期且无法续期，请返回首页重新登录';
+                                loading.value = false;
+                            }
+                        } catch(e2) {
+                            errorMsg.value = '网络异常，请刷新页面重试';
+                            loading.value = false;
+                        }
+                    }
+                    
+                    // 选择答案
+                    function selectAnswer(val) {
+                        answers.value[currentQuestionIndex.value] = val;
+                        answers.value = [].concat(answers.value); // 触发响应式更新
+                    }
+                    
+                    // 上一题
+                    function prevQuestion() {
+                        if (currentQuestionIndex.value > 0) currentQuestionIndex.value--;
+                    }
+                    
+                    // 下一题
+                    function nextQuestion() {
+                        if (currentQuestionIndex.value < questions.value.length - 1) currentQuestionIndex.value++;
+                    }
+                    
+                    // 提交测评
+                    async function submitAssessment() {
+                        submitting.value = true;
+                        showSubmitDialog.value = false;
+                        
+                        try {
+                            // 构造答案数组
+                            var formattedAnswers = questions.value.map(function(q, idx) {
+                                return { questionId: q.id, answer: answers.value[idx] || 3 };
+                            });
+                            
+                            var params = parseParams();
+                            var toolId = params.get('toolId');
+                            var taskId = params.get('taskId');
+                            
+                            var url, payload;
+                            if (toolId) {
+                                url = '/api/assessment/submit';
+                                payload = { answers: formattedAnswers, toolId: parseInt(toolId), timeSpent: timeSpent.value };
+                            } else {
+                                url = '/api/submit-assessment/' + taskId;
+                                payload = { answers: formattedAnswers, timeSpent: timeSpent.value };
+                            }
+                            
+                            var submitResp = await axios.post(url, payload, { headers: apiHeaders() });
+                            
+                            if (submitResp.data.success) {
+                                // 停止计时
+                                if (timer) clearInterval(timer);
+                                
+                                // 跳转到专业报告页面
+                                var resultId = submitResp.data.resultId;
+                                window.location.href = '/report.html?resultId=' + resultId + '&token=' + encodeURIComponent(activeToken || '');
+                            } else {
+                                alert('提交失败：' + (submitResp.data.message || '未知错误'));
+                            }
+                        } catch(e) {
+                            console.error('Submit error:', e);
+                            alert('提交失败，请重试');
+                        } finally {
+                            submitting.value = false;
+                        }
+                    }
+                    
+                    // 生成报告
+                    function generateReport(apiResult, toolId) {
+                        var toolIdNum = parseInt(toolId) || 0;
+                        var allAnswers = answers.value.map(function(a) { return a || 3; });
+                        
+                        // 根据工具类型生成不同报告
+                        if (toolIdNum === 1) {
+                            // 大五人格
+                            reportData.value = generateBig5Report(allAnswers, questions.value);
+                        } else if (toolIdNum === 2) {
+                            // MBTI
+                            reportData.value = generateMbtiReport(allAnswers, questions.value);
+                        } else if (toolIdNum === 3) {
+                            // DISC
+                            reportData.value = generateDiscReport(allAnswers, questions.value);
+                        } else if (toolIdNum === 4) {
+                            // 霍兰德
+                            reportData.value = generateHollandReport(allAnswers, questions.value);
+                        } else if (toolIdNum === 5) {
+                            // 情商
+                            reportData.value = generateEqReport(allAnswers, questions.value);
+                        } else if (toolIdNum === 6) {
+                            // 工作动机
+                            reportData.value = generateMotivationReport(allAnswers, questions.value);
+                        } else if (toolIdNum === 7) {
+                            // 工作价值观
+                            reportData.value = generateValuesReport(allAnswers, questions.value);
+                        } else {
+                            reportData.value = { toolName: '人才测评', time: new Date().toLocaleString(), totalScore: '-', totalLevel: '', dimensions: [], suggestions: [] };
+                        }
+                        
+                        showReport.value = true;
+                        loading.value = false;
+                    }
+                    
+                    // 大五人格报告
+                    function generateBig5Report(answers, questions) {
+                        var dims = { '开放性': [], '尽责性': [], '外向性': [], '宜人性': [], '情绪稳定性': [] };
+                        questions.forEach(function(q, i) {
+                            var dim = q.dimension.replace('_r', '');
+                            if (dims[dim]) {
+                                var score = answers[i] || 3;
+                                // 反向题处理
+                                if (q.dimension.indexOf('_r') >= 0) score = 6 - score;
+                                dims[dim].push(score);
+                            }
+                        });
+                        
+                        var dimensionScores = [];
+                        var colors = ['#667eea', '#f093fb', '#4facfe', '#43e97b', '#fa709a'];
+                        var idx = 0;
+                        for (var dimName in dims) {
+                            if (dims[dimName].length) {
+                                var avg = (dims[dimName].reduce(function(a, b) { return a + b; }, 0) / dims[dimName].length).toFixed(1);
+                                dimensionScores.push({ name: dimName, score: parseFloat(avg), color: colors[idx % colors.length] });
+                                idx++;
+                            }
+                        }
+                        
+                        var suggestions = [];
+                        dimensionScores.forEach(function(d) {
+                            if (d.score < 2.5) {
+                                suggestions.push(d.name + '维度得分较低，建议有意识地培养相关行为');
+                            }
+                        });
+                        if (!suggestions.length) suggestions.push('各维度发展均衡，继续保持！');
+                        
+                        return {
+                            toolName: '大五人格测评',
+                            time: new Date().toLocaleString(),
+                            dimensions: dimensionScores,
+                            totalScore: (dimensionScores.reduce(function(a, b) { return a + b.score; }, 0) / dimensionScores.length).toFixed(1),
+                            totalLevel: '',
+                            suggestions: suggestions
+                        };
+                    }
+                    
+                    // MBTI报告
+                    function generateMbtiReport(answers, questions) {
+                        var dims = { 'E/I': [0, 0], 'S/N': [0, 0], 'T/F': [0, 0], 'J/P': [0, 0] };
+                        questions.forEach(function(q, i) {
+                            var dim = q.dimension;
+                            if (dims[dim]) {
+                                var ans = answers[i] || 1; // 1=是, 2=否
+                                if (ans === 1) dims[dim][0]++; else dims[dim][1]++;
+                            }
+                        });
+                        
+                        var type = '';
+                        type += dims['E/I'][0] >= dims['E/I'][1] ? 'E' : 'I';
+                        type += dims['S/N'][0] >= dims['S/N'][1] ? 'S' : 'N';
+                        type += dims['T/F'][0] >= dims['T/F'][1] ? 'T' : 'F';
+                        type += dims['J/P'][0] >= dims['J/P'][1] ? 'J' : 'P';
+                        
+                        var typeDescs = {
+                            'INTJ': '建筑师 - 富有想象力且具有战略性思维',
+                            'INTP': '逻辑学家 - 具有创造力的发明家',
+                            'ENTJ': '指挥官 - 大胆且具有强大的意志力',
+                            'ENTP': '辩论家 - 聪明好奇的思想家',
+                            'INFJ': '提倡者 - 安静而神秘，同时鼓舞人心',
+                            'INFP': '调停者 - 诗意且善良的利他主义者',
+                            'ENFJ': '主人公 - 富有魅力的天生领袖',
+                            'ENFP': '竞选者 - 热情且富有创造力的社交者',
+                            'ISTJ': '物流师 - 务实且注重事实',
+                            'ISFJ': '守卫者 - 非常专注且温暖的守护者',
+                            'ESTJ': '总经理 - 出色的管理者',
+                            'ESFJ': '执政官 - 极有爱心且善于社交',
+                            'ISTP': '鉴赏家 - 大胆且实际的实验者',
+                            'ISFP': '探险家 - 灵活而有魅力的艺术家',
+                            'ESTP': '企业家 - 聪明且精力充沛的领导者',
+                            'ESFP': '表演者 - 自发性且善于社交的表演者'
+                        };
+                        
+                        return {
+                            toolName: 'MBTI人格类型测评',
+                            time: new Date().toLocaleString(),
+                            typeResult: type,
+                            typeDesc: typeDescs[type] || '独特的个性类型',
+                            typeColor: '#667eea',
+                            dimensions: [
+                                { name: '外向(E) / 内向(I)', score: dims['E/I'][0] / (dims['E/I'][0] + dims['E/I'][1]) * 5, color: '#667eea' },
+                                { name: '感觉(S) / 直觉(N)', score: dims['S/N'][0] / (dims['S/N'][0] + dims['S/N'][1]) * 5, color: '#f093fb' },
+                                { name: '思考(T) / 情感(F)', score: dims['T/F'][0] / (dims['T/F'][0] + dims['T/F'][1]) * 5, color: '#4facfe' },
+                                { name: '判断(J) / 知觉(P)', score: dims['J/P'][0] / (dims['J/P'][0] + dims['J/P'][1]) * 5, color: '#43e97b' }
+                            ],
+                            suggestions: [
+                                '根据您的MBTI类型 ' + type + '，建议在团队中发挥您的天然优势',
+                                '注意平衡自己的偏好与他人的不同风格',
+                                '定期进行自我反思，了解自己的行为模式'
+                            ]
+                        };
+                    }
+                    
+                    // DISC报告
+                    function generateDiscReport(answers, questions) {
+                        var scores = { D: 0, I: 0, S: 0, C: 0 };
+                        questions.forEach(function(q, i) {
+                            var dim = q.dimension;
+                            var ans = answers[i] || 1; // 1=非常符合, 2=符合, 3=一般, 4=不符合
+                            if (scores[dim] !== undefined) {
+                                scores[dim] += (5 - ans); // 反转：非常符合=4分
+                            }
+                        });
+                        
+                        var maxDim = 'D';
+                        var maxScore = 0;
+                        for (var d in scores) {
+                            if (scores[d] > maxScore) { maxScore = scores[d]; maxDim = d; }
+                        }
+                        
+                        var discDescs = {
+                            D: '支配型 - 结果导向，果断坚定',
+                            I: '影响型 - 乐观开朗，善于激励',
+                            S: '稳健型 - 耐心温和，善于倾听',
+                            C: '谨慎型 - 严谨细致，追求精准'
+                        };
+                        
+                        return {
+                            toolName: 'DISC行为风格测评',
+                            time: new Date().toLocaleString(),
+                            typeResult: maxDim + '型',
+                            typeDesc: discDescs[maxDim],
+                            typeColor: '#f5576c',
+                            dimensions: [
+                                { name: 'D 支配型', score: (scores.D / questions.length * 5).toFixed(1), color: '#f5576c' },
+                                { name: 'I 影响型', score: (scores.I / questions.length * 5).toFixed(1), color: '#f093fb' },
+                                { name: 'S 稳健型', score: (scores.S / questions.length * 5).toFixed(1), color: '#4facfe' },
+                                { name: 'C 谨慎型', score: (scores.C / questions.length * 5).toFixed(1), color: '#43e97b' }
+                            ],
+                            suggestions: [
+                                '您的主导风格是 ' + maxDim + '型，在沟通中可发挥此优势',
+                                '注意在不同情境下灵活调整自己的行为风格',
+                                '了解团队成员的DISC类型，优化沟通效果'
+                            ]
+                        };
+                    }
+                    
+                    // 霍兰德报告
+                    function generateHollandReport(answers, questions) {
+                        var scores = { R: 0, I: 0, A: 0, S: 0, E: 0, C: 0 };
+                        questions.forEach(function(q, i) {
+                            var dim = q.dimension;
+                            var ans = answers[i] || 3;
+                            if (scores[dim] !== undefined) {
+                                scores[dim] += ans;
+                            }
+                        });
+                        
+                        // 排序取前3
+                        var sorted = Object.keys(scores).sort(function(a, b) { return scores[b] - scores[a]; });
+                        var top3 = sorted.slice(0, 3).join('');
+                        
+                        var hollandDescs = {
+                            'RIA': '实用型+研究型+艺术型 - 适合工程师、技术人员',
+                            'SEC': '社会型+企业型+常规型 - 适合管理、行政工作',
+                            'AIS': '艺术型+研究型+社会型 - 适合教育、设计工作'
+                        };
+                        
+                        return {
+                            toolName: '霍兰德职业兴趣测评',
+                            time: new Date().toLocaleString(),
+                            typeResult: top3,
+                            typeDesc: hollandDescs[top3] || '多元化的职业兴趣类型',
+                            typeColor: '#4facfe',
+                            dimensions: [
+                                { name: 'R 现实型', score: (scores.R / 7).toFixed(1), color: '#f5576c' },
+                                { name: 'I 研究型', score: (scores.I / 7).toFixed(1), color: '#667eea' },
+                                { name: 'A 艺术型', score: (scores.A / 7).toFixed(1), color: '#f093fb' },
+                                { name: 'S 社会型', score: (scores.S / 7).toFixed(1), color: '#43e97b' },
+                                { name: 'E 企业型', score: (scores.E / 7).toFixed(1), color: '#fa709a' },
+                                { name: 'C 常规型', score: (scores.C / 7).toFixed(1), color: '#4facfe' }
+                            ],
+                            suggestions: [
+                                '您的霍兰德代码是 ' + top3 + '，建议优先考虑与之匹配的职业方向',
+                                '在职业选择中，综合考虑兴趣、能力和价值观',
+                                '可以通过实习或项目体验不同工作类型'
+                            ]
+                        };
+                    }
+                    
+                    // 情商报告
+                    function generateEqReport(answers, questions) {
+                        var dims = { '自我意识': [], '自我调节': [], '内在激励': [], '同理心': [], '社交技能': [] };
+                        questions.forEach(function(q, i) {
+                            var dim = q.dimension;
+                            if (dims[dim]) dims[dim].push(answers[i] || 3);
+                        });
+                        
+                        var dimensionScores = [];
+                        var colors = ['#667eea', '#f093fb', '#4facfe', '#43e97b', '#fa709a'];
+                        var idx = 0;
+                        for (var dimName in dims) {
+                            if (dims[dimName].length) {
+                                var avg = (dims[dimName].reduce(function(a, b) { return a + b; }, 0) / dims[dimName].length).toFixed(1);
+                                dimensionScores.push({ name: dimName, score: parseFloat(avg), color: colors[idx % colors.length] });
+                                idx++;
+                            }
+                        }
+                        
+                        return {
+                            toolName: '情商(EQ)测评',
+                            time: new Date().toLocaleString(),
+                            dimensions: dimensionScores,
+                            totalScore: (dimensionScores.reduce(function(a, b) { return a + b.score; }, 0) / dimensionScores.length).toFixed(1),
+                            totalLevel: '',
+                            suggestions: [
+                                '情商是可以通过练习提升的，建议每天进行情绪觉察练习',
+                                '在沟通中多关注对方的情绪信号',
+                                '学习情绪调节技巧，如深呼吸、正念等'
+                            ]
+                        };
+                    }
+                    
+                    // 工作动机报告
+                    function generateMotivationReport(answers, questions) {
+                        var dims = {};
+                        questions.forEach(function(q, i) {
+                            var dim = q.dimension;
+                            if (!dims[dim]) dims[dim] = [];
+                            dims[dim].push(answers[i] || 3);
+                        });
+                        
+                        var dimensionScores = [];
+                        var colors = ['#667eea', '#f093fb', '#4facfe', '#43e97b', '#fa709a', '#ffd89b'];
+                        var idx = 0;
+                        for (var dimName in dims) {
+                            if (dims[dimName].length) {
+                                var avg = (dims[dimName].reduce(function(a, b) { return a + b; }, 0) / dims[dimName].length).toFixed(1);
+                                dimensionScores.push({ name: dimName, score: parseFloat(avg), color: colors[idx % colors.length] });
+                                idx++;
+                            }
+                        }
+                        
+                        // 找出最高动机
+                        var topMotivation = dimensionScores.sort(function(a, b) { return b.score - a.score; })[0];
+                        
+                        return {
+                            toolName: '工作动机测评',
+                            time: new Date().toLocaleString(),
+                            typeResult: topMotivation.name,
+                            typeDesc: '您的主导工作动机是：' + topMotivation.name,
+                            typeColor: '#667eea',
+                            dimensions: dimensionScores,
+                            suggestions: [
+                                '您的主导动机是' + topMotivation.name + '，在选择工作时优先考虑能满足此动机的岗位',
+                                '了解自己的动机类型，有助于提升工作满意度',
+                                '与上级沟通时，可以表达您的核心动机需求'
+                            ]
+                        };
+                    }
+                    
+                    // 工作价值观报告
+                    function generateValuesReport(answers, questions) {
+                        var dims = {};
+                        questions.forEach(function(q, i) {
+                            var dim = q.dimension;
+                            if (!dims[dim]) dims[dim] = [];
+                            dims[dim].push(answers[i] || 3);
+                        });
+                        
+                        var dimensionScores = [];
+                        var colors = ['#667eea', '#f093fb', '#4facfe', '#43e97b', '#fa709a', '#ffd89b', '#a18cd1'];
+                        var idx = 0;
+                        for (var dimName in dims) {
+                            if (dims[dimName].length) {
+                                var avg = (dims[dimName].reduce(function(a, b) { return a + b; }, 0) / dims[dimName].length).toFixed(1);
+                                dimensionScores.push({ name: dimName, score: parseFloat(avg), color: colors[idx % colors.length] });
+                                idx++;
+                            }
+                        }
+                        
+                        var topValue = dimensionScores.sort(function(a, b) { return b.score - a.score; })[0];
+                        
+                        return {
+                            toolName: '工作价值观测评',
+                            time: new Date().toLocaleString(),
+                            typeResult: topValue.name,
+                            typeDesc: '您最看重的工作价值观是：' + topValue.name,
+                            typeColor: '#f093fb',
+                            dimensions: dimensionScores,
+                            suggestions: [
+                                '您最看重' + topValue.name + '，建议优先选择符合此价值观的企业',
+                                '价值观匹配是工作满意度的重要因素',
+                                '在面试中可以了解企业的价值观是否与你匹配'
+                            ]
+                        };
+                    }
+                    
+                    // 返回首页
+                    function goBack() {
+                        window.location.href = '/index.html' + (parseParams().get('token') ? '?token=' + parseParams().get('token') : '');
+                    }
+                    
+                    // 当前题目（计算属性）
+                    var currentQuestion = Vue.computed(function() {
+                        if (!questions.value.length || currentQuestionIndex.value >= questions.value.length) return null;
+                        return questions.value[currentQuestionIndex.value];
+                    });
+
+                    // 计算属性
+                    var progressPercentage = Vue.computed(function() {
+                        if (!questions.value.length) return 0;
+                        return Math.floor(((currentQuestionIndex.value + 1) / questions.value.length) * 100);
+                    });
+                    
+                    var answeredCount = Vue.computed(function() {
+                        return answers.value.filter(function(a) { return a !== null; }).length;
+                    });
+                    
+                    Vue.onMounted(function() {
+                        loadAssessment();
+                    });
+                    
+                    return {
+                        loading, loadingText, errorMsg, questions, currentQuestion, currentQuestionIndex, answers,
+                        showSubmitDialog, submitting, title, subtitle, timeSpent,
+                        showReport, reportData,
+                        selectAnswer, prevQuestion, nextQuestion, submitAssessment, goBack,
+                        progressPercentage, answeredCount
+                    };
+                }
+            });
+            app.mount('#app');
+        })();
+    </script>
+</body>
+</html>

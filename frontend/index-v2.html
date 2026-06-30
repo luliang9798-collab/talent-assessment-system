@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>人才测评系统 V2.0 - 对标SHL/北森</title>
+    <link rel="stylesheet" href="/libs/element-plus.css">
+    <script src="/libs/vue.global.js"></script>
+    <script src="/libs/element-plus.js"></script>
+    <script src="/libs/axios.min.js"></script>
+    <script src="/libs/echarts.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; }
+        .layout { display: flex; min-height: 100vh; }
+        .sidebar { width: 260px; background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%); color: white; }
+        .sidebar-header { padding: 20px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .sidebar-header h2 { margin: 0; font-size: 18px; }
+        .sidebar-header .subtitle { font-size: 12px; color: #999; margin-top: 5px; }
+        .menu { padding: 10px 0; }
+        .menu-group { padding: 10px 15px 5px; font-size: 12px; color: #999; text-transform: uppercase; }
+        .menu-item { padding: 12px 20px; cursor: pointer; transition: all 0.3s; display: flex; align-items: center; gap: 10px; font-size: 14px; }
+        .menu-item:hover { background: rgba(255,255,255,0.1); }
+        .menu-item.active { background: #409EFF; border-left: 3px solid #66b1ff; }
+        .main { flex: 1; display: flex; flex-direction: column; }
+        .header { background: white; padding: 15px 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
+        .content { flex: 1; padding: 30px; overflow-y: auto; }
+        .card { background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #ebeef5; }
+        .stat-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 25px; border-radius: 8px; position: relative; overflow: hidden; }
+        .stat-card::before { content: ''; position: absolute; top: -50%; right: -50%; width: 100%; height: 100%; background: rgba(255,255,255,0.1); border-radius: 50%; }
+        .stat-number { font-size: 36px; font-weight: bold; margin: 10px 0; position: relative; }
+        .stat-label { font-size: 14px; opacity: 0.9; position: relative; }
+        .btn { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.3s; }
+        .btn-primary { background: #409EFF; color: white; }
+        .btn-success { background: #67C23A; color: white; }
+        .btn-warning { background: #E6A23C; color: white; }
+        .btn-danger { background: #F56C6C; color: white; }
+        .btn-info { background: #909399; color: white; }
+        .btn:hover { opacity: 0.8; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ebeef5; }
+        th { background: #f5f7fa; color: #606266; font-weight: 600; }
+        tr:hover { background: #f5f7fa; }
+        input, select, textarea { width: 100%; padding: 10px 12px; border: 1px solid #dcdfe6; border-radius: 4px; font-size: 14px; transition: border-color 0.3s; }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: #409EFF; box-shadow: 0 0 0 2px rgba(64,158,255,0.2); }
+        .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: white; border-radius: 8px; padding: 30px; max-width: 700px; width: 90%; max-height: 85vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #ebeef5; }
+        .modal-title { font-size: 18px; font-weight: 600; color: #303133; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+        .tag { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+        .tag-success { background: #f0f9ff; color: #67C23A; border: 1px solid #67C23A; }
+        .tag-warning { background: #fdf6ec; color: #E6A23C; border: 1px solid #E6A23C; }
+        .tag-info { background: #f4f4f5; color: #909399; border: 1px solid #909399; }
+        .tag-danger { background: #fef0f0; color: #F56C6C; border: 1px solid #F56C6C; }
+        .login-page { min-height: 100vh; display: flex; justify-content: center; align-items: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .login-box { background: white; padding: 50px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); width: 420px; }
+        .login-title { text-align: center; font-size: 28px; color: #303133; margin-bottom: 10px; }
+        .login-subtitle { text-align: center; font-size: 14px; color: #909399; margin-bottom: 30px; }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; color: #606266; font-size: 14px; font-weight: 500; }
+        .form-group input { width: 100%; padding: 12px; border: 1px solid #dcdfe6; border-radius: 4px; font-size: 14px; }
+        .form-group input:focus { outline: none; border-color: #409EFF; box-shadow: 0 0 0 2px rgba(64,158,255,0.2); }
+        .btn-login { width: 100%; padding: 12px; background: #409EFF; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; margin-top: 10px; transition: all 0.3s; }
+        .btn-login:hover { background: #66b1ff; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(64,158,255,0.4); }
+        .error-msg { color: #F56C6C; margin-top: 10px; font-size: 14px; text-align: center; }
+        .talent-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin: 20px 0; }
+        .talent-cell { padding: 25px; border-radius: 8px; text-align: center; background: #f5f7fa; border: 2px solid transparent; transition: all 0.3s; cursor: pointer; }
+        .talent-cell:hover { transform: translateY(-5px); box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
+        .talent-cell.high { background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border-color: #67C23A; }
+        .talent-cell.medium { background: linear-gradient(135deg, #fdf6ec 0%, #faecd8 100%); border-color: #E6A23C; }
+        .talent-cell.low { background: linear-gradient(135deg, #fef0f0 0%, #fde2e2 100%); border-color: #F56C6C; }
+        .talent-cell .cell-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+        .talent-cell .cell-desc { font-size: 12px; color: #909399; }
+        .talent-cell .cell-count { font-size: 24px; font-weight: bold; margin-top: 10px; }
+        .progress-bar { height: 8px; background: #ebeef5; border-radius: 4px; overflow: hidden; margin: 10px 0; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #409EFF 0%, #66b1ff 100%); border-radius: 4px; transition: width 0.5s; }
+        .badge { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: #F56C6C; color: white; font-size: 12px; margin-left: 5px; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- 登录页面 -->
+        <div v-if="!isLoggedIn" class="login-page">
+            <div class="login-box">
+                <div class="login-title">人才测评系统</div>
+                <div class="login-subtitle">V2.0 对标SHL & 北森</div>
+                
+                <div class="form-group">
+                    <label>用户名</label>
+                    <input v-model="loginForm.username" type="text" placeholder="请输入用户名" @keyup.enter="handleLogin" />
+                </div>
+                
+                <div class="form-group">
+                    <label>密码</label>
+                    <input v-model="loginForm.password" type="password" placeholder="请输入密码" @keyup.enter="handleLogin" />
+                </div>
+                
+                <button class="btn-login" @click="handleLogin" :disabled="loading">
+                    {{ loading ? '登录中...' : '登录' }}
+                </button>
+                
+                <div v-if="loginError" class="error-msg">{{ loginError }}</div>
+                
+                <div style="margin-top: 20px; text-align: center; color: #909399; font-size: 13px;">
+                    <p>默认账号: admin / admin123</p>
+                    <p style="margin-top: 10px;">专业人才测评系统 | 科学 | 客观 | 有效</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主界面 -->
+        <div v-else class="layout">
+            <!-- 侧边栏 -->
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <h2>✅ 人才测评系统</h2>
+                    <div class="subtitle">V2.0 对标SHL & 北森</div>
+                </div>
+                <div class="menu">
+                    <div class="menu-group">核心功能</div>
+                    <div class="menu-item" :class="{ active: currentPage === 'dashboard' }" @click="currentPage = 'dashboard'">
+                        <span>📊</span> <span>系统首页</span>
+                    </div>
+                    <div class="menu-item" :class="{ active: currentPage === 'competency' }" @click="currentPage = 'competency'">
+                        <span>🎯</span> <span>胜任力模型</span>
+                    </div>
+                    <div class="menu-item" :class="{ active: currentPage === 'scales' }" @click="currentPage = 'scales'">
+                        <span>📝</span> <span>测评量表</span>
+                        <span class="badge" v-if="scales.length > 0">{{ scales.length }}</span>
+                    </div>
+                    
+                    <div class="menu-group">测评管理</div>
+                    <div class="menu-item" :class="{ active: currentPage === 'projects' }" @click="currentPage = 'projects'">
+                        <span>📁</span> <span>测评项目</span>
+                    </div>
+                    <div class="menu-item" :class="{ active: currentPage === 'tasks' }" @click="currentPage = 'tasks'">
+                        <span>✅</span> <span>测评任务</span>
+                    </div>
+                    <div class="menu-item" :class="{ active: currentPage === 'assessment' }" @click="currentPage = 'assessment'">
+                        <span>🎯</span> <span>开始测评</span>
+                    </div>
+                    
+                    <div class="menu-group">人才发展</div>
+                    <div class="menu-item" :class="{ active: currentPage === 'talent-map' }" @click="currentPage = 'talent-map'">
+                        <span>🗺️</span> <span>人才地图</span>
+                    </div>
+                    <div class="menu-item" :class="{ active: currentPage === 'succession' }" @click="currentPage = 'succession'">
+                        <span>🎯</span> <span>继任计划</span>
+                    </div>
+                    <div class="menu-item" :class="{ active: currentPage === 'idp' }" @click="currentPage = 'idp'">
+                        <span>📈</span> <span>个人发展</span>
+                    </div>
+                    
+                    <div class="menu-group">评估与报告</div>
+                    <div class="menu-item" :class="{ active: currentPage === '360' }" @click="currentPage = '360'">
+                        <span>🔄</span> <span>360评估</span>
+                    </div>
+                    <div class="menu-item" :class="{ active: currentPage === 'reports' }" @click="currentPage = 'reports'">
+                        <span>📄</span> <span>测评报告</span>
+                    </div>
+                    
+                    <div class="menu-group">系统管理</div>
+                    <div class="menu-item" :class="{ active: currentPage === 'users' }" @click="currentPage = 'users'">
+                        <span>👥</span> <span>用户管理</span>
+                    </div>
+                    <div class="menu-item" :class="{ active: currentPage === 'settings' }" @click="currentPage = 'settings'">
+                        <span>⚙️</span> <span>系统设置</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 主内容区 -->
+            <div class="main">
+                <div class="header">
+                    <h2>{{ getPageTitle() }}</h2>
+                    <div style="display: flex; align-items: center; gap: 20px;">
+                        <span style="color: #909399;">欢迎, <strong>{{ currentUser?.realName || '用户' }}</strong></span>
+                        <button class="btn btn-danger" @click="handleLogout">退出</button>
+                    </div>
+                </div>
+
+                <div class="content">
+                    <!-- 系统首页 -->
+                    <div v-if="currentPage === 'dashboard'">
+                        <div class="grid" style="margin-bottom: 30px;">
+                            <div class="stat-card">
+                                <div class="stat-label">测评量表</div>
+                                <div class="stat-number">{{ statistics.totalScales || 7 }}</div>
+                                <div style="font-size: 12px; margin-top: 5px; opacity: 0.8;">个专业工具</div>
+                            </div>
+                            <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                                <div class="stat-label">测评项目</div>
+                                <div class="stat-number">{{ statistics.totalProjects }}</div>
+                                <div style="font-size: 12px; margin-top: 5px; opacity: 0.8;">个进行中</div>
+                            </div>
+                            <div class="stat-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                                <div class="stat-label">测评任务</div>
+                                <div class="stat-number">{{ statistics.totalTasks }}</div>
+                                <div style="font-size: 12px; margin-top: 5px; opacity: 0.8;">个待完成</div>
+                            </div>
+                            <div class="stat-card" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                                <div class="stat-label">生成报告</div>
+                                <div class="stat-number">{{ statistics.totalReports }}</div>
+                                <div style="font-size: 12px; margin-top: 5px; opacity: 0.8;">份</div>
+                            </div>
+                        </div>
+                        
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>🎯 系统特性（对标SHL & 北森）</h3>
+                            </div>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                                <div style="padding: 20px; background: #f5f7fa; border-radius: 8px; border-left: 4px solid #409EFF;">
+                                    <h4 style="color: #409EFF; margin-bottom: 10px;">✅ 科学性</h4>
+                                    <p style="color: #606266; line-height: 1.8;">基于心理学理论，量表经过信效度检验，确保测评结果科学有效</p>
+                                </div>
+                                <div style="padding: 20px; background: #f5f7fa; border-radius: 8px; border-left: 4px solid #67C23A;">
+                                    <h4 style="color: #67C23A; margin-bottom: 10px;">✅ 专业性</h4>
+                                    <p style="color: #606266; line-height: 1.8;">专业报告格式，包含维度得分、分析和建议，符合行业标准</p>
+                                </div>
+                                <div style="padding: 20px; background: #f5f7fa; border-radius: 8px; border-left: 4px solid #E6A23C;">
+                                    <h4 style="color: #E6A23C; margin-bottom: 10px;">✅ 全面性</h4>
+                                    <p style="color: #606266; line-height: 1.8;">覆盖人才管理全流程：测评、盘点、发展、继任</p>
+                                </div>
+                                <div style="padding: 20px; background: #f5f7fa; border-radius: 8px; border-left: 4px solid #F56C6C;">
+                                    <h4 style="color: #F56C6C; margin-bottom: 10px;">✅ 可定制</h4>
+                                    <p style="color: #606266; line-height: 1.8;">支持企业个性化配置，自定义胜任力模型和测评方案</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 胜任力模型 -->
+                    <div v-if="currentPage === 'competency'">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>胜任力模型管理</h3>
+                            </div>
+                            <div style="margin-bottom: 20px;">
+                                <p style="color: #606266; line-height: 1.8;">
+                                    系统内置 <strong>SHL全方位胜任力模型（UCF）</strong>和<strong>北森综合胜任力模型</strong>，
+                                    支持自定义胜任力维度，实现岗位-胜任力匹配分析。
+                                </p>
+                            </div>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>模型名称</th>
+                                        <th>模型代码</th>
+                                        <th>类型</th>
+                                        <th>维度数量</th>
+                                        <th>版本</th>
+                                        <th>状态</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="model in competencyModels" :key="model.id">
+                                        <td>{{ model.model_name }}</td>
+                                        <td>{{ model.model_code }}</td>
+                                        <td>
+                                            <span class="tag tag-info">{{ model.model_type === 'UCF' ? 'SHL UCF' : '北森' }}</span>
+                                        </td>
+                                        <td>{{ model.dimension_count || 0 }}</td>
+                                        <td>{{ model.version }}</td>
+                                        <td>
+                                            <span class="tag" :class="model.status === 1 ? 'tag-success' : 'tag-info'">
+                                                {{ model.status === 1 ? '启用' : '禁用' }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-info" @click="viewModelDimensions(model)">查看维度</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- 维度列表 -->
+                        <div v-if="selectedModel" class="card">
+                            <div class="card-header">
+                                <h3>{{ selectedModel.model_name }} - 维度列表</h3>
+                                <button class="btn" @click="selectedModel = null">关闭</button>
+                            </div>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>维度名称</th>
+                                        <th>维度代码</th>
+                                        <th>描述</th>
+                                        <th>排序</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="dim in modelDimensions" :key="dim.id">
+                                        <td>{{ dim.dimension_name }}</td>
+                                        <td>{{ dim.dimension_code }}</td>
+                                        <td>{{ dim.description || '-' }}</td>
+                                        <td>{{ dim.sort_order }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 测评量表 -->
+                    <div v-if="currentPage === 'scales'">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>专业测评量表</h3>
+                                <button class="btn btn-primary" @click="alert('量表管理功能开发中...')">添加量表</button>
+                            </div>
+                            <p style="color: #909399; margin-bottom: 20px;">
+                                系统内置7个专业测评量表，对标SHL和北森，支持大五人格、MBTI、DISC、霍兰德、情商、动机、价值观测评
+                            </p>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>量表名称</th>
+                                        <th>代码</th>
+                                        <th>类型</th>
+                                        <th>题目数</th>
+                                        <th>预计时间</th>
+                                        <th>信度</th>
+                                        <th>效度</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="scale in scales" :key="scale.id">
+                                        <td>
+                                            <strong>{{ scale.scale_name }}</strong>
+                                        </td>
+                                        <td>{{ scale.scale_code }}</td>
+                                        <td>
+                                            <span class="tag tag-info">{{ getScaleTypeText(scale.scale_type) }}</span>
+                                        </td>
+                                        <td>{{ scale.question_count }}题</td>
+                                        <td>{{ scale.estimated_time }}分钟</td>
+                                        <td>{{ scale.reliability || '-' }}</td>
+                                        <td>{{ scale.validity || '-' }}</td>
+                                        <td>
+                                            <button class="btn btn-primary" @click="startScaleAssessment(scale)">开始测评</button>
+                                            <button class="btn btn-info" @click="viewScaleDetail(scale)">详情</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 其他页面占位 -->
+                    <div v-if="currentPage === 'projects'">
+                        <div class="card">
+                            <h3>测评项目管理</h3>
+                            <p>功能开发中，即将上线...</p>
+                        </div>
+                    </div>
+
+                    <div v-if="currentPage === '360'">
+                        <div class="card">
+                            <h3>360度评估</h3>
+                            <p>功能开发中，即将上线...</p>
+                        </div>
+                    </div>
+
+                    <div v-if="currentPage === 'reports'">
+                        <div class="card">
+                            <h3>测评报告</h3>
+                            <p>功能开发中，即将上线...</p>
+                        </div>
+                    </div>
+
+                    <div v-if="currentPage === 'users'">
+                        <div class="card">
+                            <h3>用户管理</h3>
+                            <p>功能开发中，即将上线...</p>
+                        </div>
+                    </div>
+
+                    <div v-if="currentPage === 'talent-map'">
+                        <div class="card">
+                            <h3>人才九宫格</h3>
+                            <p>基于绩效和潜力的九宫格人才盘点</p>
+                            <div class="talent-grid">
+                                <div class="talent-cell low">
+                                    <div class="cell-title">低绩效-低潜力</div>
+                                    <div class="cell-desc">待改进</div>
+                                    <div class="cell-count">0</div>
+                                </div>
+                                <div class="talent-cell medium">
+                                    <div class="cell-title">中绩效-低潜力</div>
+                                    <div class="cell-desc">稳定贡献者</div>
+                                    <div class="cell-count">0</div>
+                                </div>
+                                <div class="talent-cell high">
+                                    <div class="cell-title">高绩效-低潜力</div>
+                                    <div class="cell-desc">核心贡献者</div>
+                                    <div class="cell-count">0</div>
+                                </div>
+                                <div class="talent-cell low">
+                                    <div class="cell-title">低绩效-中潜力</div>
+                                    <div class="cell-desc">待观察</div>
+                                    <div class="cell-count">0</div>
+                                </div>
+                                <div class="talent-cell medium">
+                                    <div class="cell-title">中绩效-中潜力</div>
+                                    <div class="cell-desc">中坚力量</div>
+                                    <div class="cell-count">0</div>
+                                </div>
+                                <div class="talent-cell high">
+                                    <div class="cell-title">高绩效-中潜力</div>
+                                    <div class="cell-desc">高潜人才</div>
+                                    <div class="cell-count">0</div>
+                                </div>
+                                <div class="talent-cell low">
+                                    <div class="cell-title">低绩效-高潜力</div>
+                                    <div class="cell-desc">需辅导</div>
+                                    <div class="cell-count">0</div>
+                                </div>
+                                <div class="talent-cell medium">
+                                    <div class="cell-title">中绩效-高潜力</div>
+                                    <div class="cell-desc">未来之星</div>
+                                    <div class="cell-count">0</div>
+                                </div>
+                                <div class="talent-cell high">
+                                    <div class="cell-title">高绩效-高潜力</div>
+                                    <div class="cell-desc">超级明星</div>
+                                    <div class="cell-count">0</div>
+                                </div>
+                            </div>
+                            <button class="btn btn-primary" @click="alert('详细九宫格功能开发中...')">查看详细九宫格</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const { createApp, ref, onMounted } = Vue;
+        
+        createApp({
+            setup() {
+                const isLoggedIn = ref(false);
+                const loginForm = ref({ username: '', password: '' });
+                const loginError = ref('');
+                const currentUser = ref({});
+                const currentPage = ref('dashboard');
+                const loading = ref(false);
+                
+                const statistics = ref({
+                    totalProjects: 0,
+                    totalTasks: 0,
+                    totalUsers: 0,
+                    totalReports: 0,
+                    totalScales: 7
+                });
+                
+                const competencyModels = ref([]);
+                const modelDimensions = ref([]);
+                const selectedModel = ref(null);
+                const scales = ref([]);
+                
+                // 登录
+                const handleLogin = async () => {
+                    if (!loginForm.value.username || !loginForm.value.password) {
+                        loginError.value = '请输入用户名和密码';
+                        return;
+                    }
+                    
+                    loading.value = true;
+                    loginError.value = '';
+                    
+                    try {
+                        const response = await axios.post('/api/auth/login', loginForm.value);
+                        if (response.data.success) {
+                            localStorage.setItem('token', response.data.token);
+                            localStorage.setItem('user', JSON.stringify(response.data.user));
+                            isLoggedIn.value = true;
+                            currentUser.value = response.data.user;
+                            await loadAllData();
+                        } else {
+                            loginError.value = response.data.message || '登录失败';
+                        }
+                    } catch (error) {
+                        loginError.value = '登录失败: ' + (error.response?.data?.message || error.message);
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+                
+                // 加载所有数据
+                const loadAllData = async () => {
+                    await Promise.all([
+                        loadCompetencyModels(),
+                        loadScales()
+                    ]);
+                };
+                
+                // 加载胜任力模型
+                const loadCompetencyModels = async () => {
+                    try {
+                        const token = localStorage.getItem('token');
+                        const response = await axios.get('/api/competency-models', {
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
+                        if (response.data.success) {
+                            competencyModels.value = response.data.models;
+                        }
+                    } catch (error) {
+                        console.error('加载胜任力模型失败', error);
+                    }
+                };
+                
+                // 查看模型维度
+                const viewModelDimensions = async (model) => {
+                    selectedModel.value = model;
+                    try {
+                        const token = localStorage.getItem('token');
+                        const response = await axios.get(`/api/competency-models/${model.id}/dimensions`, {
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
+                        if (response.data.success) {
+                            modelDimensions.value = response.data.dimensions;
+                        }
+                    } catch (error) {
+                        console.error('加载维度失败', error);
+                    }
+                };
+                
+                // 加载测评量表
+                const loadScales = async () => {
+                    try {
+                        const token = localStorage.getItem('token');
+                        const response = await axios.get('/api/scales', {
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
+                        if (response.data.success) {
+                            scales.value = response.data.scales;
+                        }
+                    } catch (error) {
+                        console.error('加载量表失败', error);
+                    }
+                };
+                
+                // 开始量表测评
+                const startScaleAssessment = (scale) => {
+                    alert('即将开始 ' + scale.scale_name + '\n\n题目数量: ' + scale.question_count + '题\n预计时间: ' + scale.estimated_time + '分钟\n\n点击确定开始测评');
+                    // 实际应该跳转到答题页面
+                    window.open(`/assessment.html?scaleId=${scale.id}`, '_blank');
+                };
+                
+                // 查看量表详情
+                const viewScaleDetail = (scale) => {
+                    alert('量表详情功能开发中...\n\n量表名称: ' + scale.scale_name + '\n描述: ' + scale.description);
+                };
+                
+                // 获取量表类型文本
+                const getScaleTypeText = (type) => {
+                    const typeMap = {
+                        'PERSONALITY': '性格测评',
+                        'ABILITY': '能力测评',
+                        'MOTIVATION': '动机测评',
+                        'INTEREST': '兴趣测评',
+                        'VALUES': '价值观测评'
+                    };
+                    return typeMap[type] || type;
+                };
+                
+                // 获取页面标题
+                const getPageTitle = () => {
+                    const titles = {
+                        'dashboard': '系统首页',
+                        'competency': '胜任力模型',
+                        'scales': '测评量表',
+                        'projects': '测评项目管理',
+                        'tasks': '测评任务管理',
+                        'assessment': '开始测评',
+                        'talent-map': '人才地图',
+                        'succession': '继任计划',
+                        'idp': '个人发展计划',
+                        '360': '360度评估',
+                        'reports': '测评报告',
+                        'users': '用户管理',
+                        'settings': '系统设置'
+                    };
+                    return titles[currentPage.value] || '系统首页';
+                };
+                
+                // 退出登录
+                const handleLogout = () => {
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('user');
+                    isLoggedIn.value = false;
+                    currentUser.value = {};
+                };
+                
+                // 检查登录状态
+                onMounted(() => {
+                    const token = localStorage.getItem('token');
+                    if (token) {
+                        isLoggedIn.value = true;
+                        try {
+                            const userStr = localStorage.getItem('user');
+                            if (userStr) {
+                                currentUser.value = JSON.parse(userStr);
+                            }
+                            loadAllData();
+                        } catch (e) {
+                            console.error('检查登录状态失败:', e);
+                        }
+                    }
+                });
+                
+                return {
+                    isLoggedIn,
+                    loginForm,
+                    loginError,
+                    currentUser,
+                    currentPage,
+                    loading,
+                    statistics,
+                    competencyModels,
+                    modelDimensions,
+                    selectedModel,
+                    scales,
+                    handleLogin,
+                    loadAllData,
+                    loadCompetencyModels,
+                    viewModelDimensions,
+                    loadScales,
+                    startScaleAssessment,
+                    viewScaleDetail,
+                    getScaleTypeText,
+                    getPageTitle,
+                    handleLogout
+                };
+            }
+        }).use(ElementPlus).mount('#app');
+    </script>
+</body>
+</html>

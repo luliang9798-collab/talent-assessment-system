@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统测试 - 人才测评系统</title>
+    <link rel="stylesheet" href="/libs/element-plus.css">
+    <script src="/libs/vue.global.js"></script>
+    <script src="/libs/element-plus.js"></script>
+    <script src="/libs/axios.min.js"></script>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            padding: 50px;
+            background: #f0f2f5;
+        }
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 4px solid #409EFF;
+            background: #f0f9ff;
+        }
+        .status.success {
+            border-left-color: #67C23A;
+            background: #f0f9ff;
+            color: #67C23A;
+        }
+        .status.error {
+            border-left-color: #F56C6C;
+            background: #fef0f0;
+            color: #F56C6C;
+        }
+        h1 {
+            color: #303133;
+            margin-bottom: 30px;
+        }
+        .test-button {
+            margin: 10px 0;
+            padding: 10px 20px;
+            background: #409EFF;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .test-button:hover {
+            background: #66b1ff;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="test-container">
+            <h1>🔧 系统环境测试</h1>
+            
+            <div class="status" :class="vueLoaded ? 'success' : 'error'">
+                <strong>Vue 3:</strong> {{ vueLoaded ? '✅ 加载成功' : '❌ 加载失败' }}
+            </div>
+            
+            <div class="status" :class="elementPlusLoaded ? 'success' : 'error'">
+                <strong>Element Plus:</strong> {{ elementPlusLoaded ? '✅ 加载成功' : '❌ 加载失败' }}
+            </div>
+            
+            <div class="status" :class="axiosLoaded ? 'success' : 'error'">
+                <strong>Axios:</strong> {{ axiosLoaded ? '✅ 加载成功' : '❌ 加载失败' }}
+            </div>
+            
+            <div class="status" :class="apiConnected ? 'success' : 'error'">
+                <strong>后端API:</strong> {{ apiConnected ? '✅ 连接成功' : '⏳ 测试中...' }}
+                <div v-if="apiError" style="margin-top: 5px; font-size: 12px;">{{ apiError }}</div>
+            </div>
+            
+            <hr style="margin: 30px 0;">
+            
+            <h3>功能测试</h3>
+            <button class="test-button" @click="testLogin">测试登录API</button>
+            <button class="test-button" @click="testProjects">测试项目列表API</button>
+            
+            <div v-if="testResult" style="margin-top: 20px; padding: 15px; background: #f5f7fa; border-radius: 4px;">
+                <strong>测试结果:</strong>
+                <pre style="margin-top: 10px; overflow-x: auto;">{{ JSON.stringify(testResult, null, 2) }}</pre>
+            </div>
+            
+            <hr style="margin: 30px 0;">
+            
+            <h3>访问主系统</h3>
+            <a href="/" style="display: inline-block; padding: 10px 20px; background: #67C23A; color: white; text-decoration: none; border-radius: 4px;">
+                返回主页
+            </a>
+        </div>
+    </div>
+    
+    <script>
+        // 检查库是否加载
+        const vueLoaded = typeof Vue !== 'undefined';
+        const elementPlusLoaded = typeof ElementPlus !== 'undefined';
+        const axiosLoaded = typeof axios !== 'undefined';
+        
+        console.log('Vue loaded:', vueLoaded);
+        console.log('Element Plus loaded:', elementPlusLoaded);
+        console.log('Axios loaded:', axiosLoaded);
+        
+        const { createApp, ref, onMounted } = Vue;
+        
+        createApp({
+            setup() {
+                const vueLoaded = ref(typeof Vue !== 'undefined');
+                const elementPlusLoaded = ref(typeof ElementPlus !== 'undefined');
+                const axiosLoaded = ref(typeof axios !== 'undefined');
+                const apiConnected = ref(false);
+                const apiError = ref('');
+                const testResult = ref(null);
+                
+                const checkAPI = async () => {
+                    try {
+                        const response = await axios.get('http://localhost:3000/api/projects', {
+                            headers: { Authorization: 'Bearer test' }
+                        });
+                        apiConnected.value = true;
+                    } catch (error) {
+                        if (error.response) {
+                            apiConnected.value = true;
+                            apiError.value = 'API已连接（需要认证）';
+                        } else {
+                            apiError.value = '无法连接到后端: ' + error.message;
+                        }
+                    }
+                };
+                
+                const testLogin = async () => {
+                    try {
+                        const response = await axios.post('http://localhost:3000/api/auth/login', {
+                            username: 'admin',
+                            password: 'admin123'
+                        });
+                        testResult.value = response.data;
+                    } catch (error) {
+                        testResult.value = { error: error.message };
+                    }
+                };
+                
+                const testProjects = async () => {
+                    testResult.value = { message: '请先登录获取token，然后测试带认证的API' };
+                };
+                
+                onMounted(() => {
+                    checkAPI();
+                });
+                
+                return {
+                    vueLoaded,
+                    elementPlusLoaded,
+                    axiosLoaded,
+                    apiConnected,
+                    apiError,
+                    testResult,
+                    testLogin,
+                    testProjects
+                };
+            }
+        }).use(ElementPlus).mount('#app');
+    </script>
+</body>
+</html>

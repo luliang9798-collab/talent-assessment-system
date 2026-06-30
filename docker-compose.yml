@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # MySQL数据库
+  mysql:
+    image: mysql:8.0
+    container_name: talent-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_DATABASE: talent_assessment
+      MYSQL_USER: talent
+      MYSQL_PASSWORD: talent123
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    networks:
+      - talent-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # 后端Spring Boot应用
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: talent-backend
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/talent_assessment?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: 123456
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - talent-network
+
+  # 前端Web应用 (使用Nginx)
+  frontend:
+    image: nginx:alpine
+    container_name: talent-frontend
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./docker/frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+    networks:
+      - talent-network
+
+  # Redis缓存 (可选，用于提升性能)
+  redis:
+    image: redis:alpine
+    container_name: talent-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    networks:
+      - talent-network
+
+volumes:
+  mysql_data:
+
+networks:
+  talent-network:
+    driver: bridge
