@@ -591,8 +591,8 @@
                     window.open('/report.html?userId=' + emp.user_id, '_blank');
                 }
 
-                // 导出九宫格数据
-                function printGrid() {
+                // 导出九宫格数据（前端生成打印页面）
+                async function printGrid() {
                     if (!currentGrid.value || !currentGrid.value.id) {
                         alert('请先选择九宫格');
                         return;
@@ -603,10 +603,163 @@
                         alert('请先登录');
                         return;
                     }
+
+                    try {
+                        // 使用 Authorization header 请求（解决 401 问题）
+                        const resp = await axios.get('/api/nine-box/grids/' + currentGrid.value.id + '/export', {
+                            headers: { 'Authorization': 'Bearer ' + token },
+                            responseType: 'text'
+                        });
+
+                        if (resp.data && !resp.data.startsWith('{')) {
+                            // 成功获取HTML内容 → 写入新窗口打印
+                            const printWindow = window.open('', '_blank');
+                            if (printWindow) {
+                                printWindow.document.write(resp.data);
+                                printWindow.document.close();
+                                setTimeout(() => { printWindow.print(); }, 500);
+                            } else {
+                                alert('请允许浏览器打开弹出窗口');
+                            }
+                        } else {
+                            // 后端返回了错误JSON或空内容 → 前端自行生成打印页
+                            generateFrontendPrintPage();
+                        }
+                    } catch (error) {
+                        console.warn('后端导出失败，使用前端打印', error);
+                        // 降级：前端直接生成打印页面
+                        generateFrontendPrintPage();
+                    }
+                }
+
+                // 前端降级：生成纯前端打印页面（不依赖后端）
+                function generateFrontendPrintPage() {
+                    const g = currentGrid.value;
+                    const positions = g.positions || [];
                     
-                    // 在新窗口打开打印报告
-                    const exportWindow = window.open(`/api/nine-box/grids/${currentGrid.value.id}/export?token=${token}`, '_blank');
-                    if (!exportWindow) {
+                    // 按格子分组统计
+                    const cellStats = {};
+                    for (let i = 1; i <= 9; i++) cellStats[i] = [];
+                    positions.forEach(p => {
+                        const q = p.quadrant || 1;
+                        if (cellStats[q]) cellStats[q].push(p);
+                    });
+
+                    const quadrantNames = {
+                        1: '问题员工', 2: '待改进/低绩效', 3: '待改进/低潜力',
+                        4: '中坚/低绩效', 5: '中坚力量', 6: '中坚/高绩效',
+                        7: '核心人才/低绩效', 8: '核心人才', 9: '超级明星'
+                    };
+                    const now = new Date().toLocaleString('zh-CN');
+
+                    let html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + (g.grid_name || '九宫格报告') + '</title>';
+                    html += '<style>';
+                    html += 'body{font-family:"Microsoft YaHei",sans-serif;padding:30px;color:#303133;}';
+                    html += '.header{text-align:center;border-bottom:3px solid #667eea;padding-bottom:20px;margin-bottom:30px;}';
+                    html += '.header h1{font-size:26px;color:#667eea;margin:10px 0;}';
+                    html += '.meta{color:#909399;font-size:14px;}';
+                    html += '.section{margin-bottom:30px;} h2{font-size:18px;border-left:4px solid #409eff;padding-left:12px;margin-bottom:15px;}';
+                    html += '.grid-table{width:100%;border-collapse:collapse;margin:15px 0;}';
+                    html += '.grid-table th,.grid-table td{border:1px solid #dcdfe6;padding:10px;text-align:center;font-size:13px;}';
+                    html += '.grid-table th{background:#f5f7fa;font-weight:bold;}';
+                    html += '.cell-high{background:#e8f4e8;}.cell-mid{background:#fef0cd;}.cell-low{background:#fde2d9;}';
+                    html += '.emp-list{text-align:left;font-size:12px;line-height:1.8;}';
+                    html += '.summary-box{background:#f5f7fa;border-radius:8px;padding:20px;}';
+                    html += '.stat-row{display:flex;gap:20px;margin:15px 0;} .stat-card{flex:1;background:white;border-radius:8px;padding:15px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.08);}';
+                    html += '.stat-num{font-size:32px;font-weight:bold;color:#409eff;} .stat-label{font-size:12px;color:#909399;margin-top:5px;}';
+                    html += '@media print{body{padding:15px;} .no-print{display:none;}}';
+                    html += '</style></head><body>';
+
+                    // 封面
+                    html += '<div class="header">';
+                    html += '<h1>📊 人才九宫格盘点报告</h1>';
+                    html += '<h2>' + (g.grid_name || '人才九宫格') + '</h2>';
+                    html += '<div class="meta">';
+                    html += '<span>📅 报告时间：' + now + '</span>&nbsp;&nbsp;';
+                    html += '<span>📋 周期：' + (g.review_period || '-') + '</span>&nbsp;&nbsp;';
+                    html += '<span>👥 总人数：' + positions.length + ' 人</span>';
+                    html += '</div></div>';
+
+                    // 统计概览
+                    html += '<div class="section"><h2>📈 盘点概览</h2><div class="stat-row">';
+                    const starCount = (cellStats[9]||[]).length;
+                    const coreCount = (cellStats[8]||[]).length + (cellStats[7]||[]).length;
+                    const midCount = (cellStats[5]||[]).length + (cellStats[4]||[]).length + (cellStats[6]||[]).length;
+                    const improveCount = (cellStats[3]||[]).length + (cellStats[2]||[]).length + (cellStats[1]||[]).length;
+                    html += '<div class="stat-card"><div class="stat-num" style="color:#67c23a;">' + starCount + '</div><div class="stat-label">超级明星</div></div>';
+                    html += '<div class="stat-card"><div class="stat-num" style="color:#409eff;">' + coreCount + '</div><div class="stat-label">核心人才</div></div>';
+                    html += '<div class="stat-card"><div class="stat-num" style="color:#e6a23c;">' + midCount + '</div><div class="stat-label">中坚力量</div></div>';
+                    html += '<div class="stat-card"><div class="stat-num" style="color:#f56c6c;">' + improveCount + '</div><div class="stat-label">待改进</div></div>';
+                    html += '</div></div>';
+
+                    // 九宫格详情表
+                    html += '<div class="section"><h2>🗺️ 九宫格分布明细</h2>';
+                    html += '<table class="grid-table"><tr><th>格子</th><th>类型</th><th>人数</th><th>员工名单</th><th>管理建议</th></tr>';
+                    
+                    for (let i = 9; i >= 1; i--) {
+                        const emps = cellStats[i] || [];
+                        const cellClass = i >= 7 ? 'cell-high' : i >= 4 ? 'cell-mid' : 'cell-low';
+                        const suggestions = i === 9 ? '重点保留、给予挑战性任务、快速晋升通道' :
+                                           i === 8 ? '核心骨干培养、赋予更多责任、继任计划储备' :
+                                           i === 7 ? '稳定发展、针对性培训提升绩效或潜力' :
+                                           i === 6 ? '制定绩效改进计划、明确期望目标' :
+                                           i === 5 ? '双向发展沟通、确定职业发展方向' :
+                                           i === 4 ? '提供技能培训、设定短期目标激励' :
+                                           i === 3 ? '绩效PIP计划、评估岗位匹配度' :
+                                           i === 2 ? '潜力开发项目、导师辅导安排' :
+                                           '制定改进计划（限定期限）、考虑转岗或淘汰';
+                        
+                        html += '<tr class="' + cellClass + '">';
+                        html += '<td><strong>格子' + i + '</strong></td>';
+                        html += '<td>' + (quadrantNames[i] || '-') + '</td>';
+                        html += '<td><strong>' + emps.length + '人</strong></td>';
+                        html += '<td class="emp-list">' + (emps.length > 0 ? emps.map(e => (e.real_name || e.username || '-')).join('<br>') : '-') + '</td>';
+                        html += '<td style="font-size:12px;">' + suggestions + '</td>';
+                        html += '</tr>';
+                    }
+                    html += '</table></div>';
+
+                    // 员工详细列表
+                    html += '<div class="section"><h2>👥 员工详细列表</h2>';
+                    html += '<table class="grid-table"><tr><th>姓名</th><th>绩效分</th><th>潜力分</th><th>所在格子</th><th>备注</th></tr>';
+                    positions.forEach(p => {
+                        html += '<tr>';
+                        html += '<td>' + (p.real_name || p.username || '-') + '</td>';
+                        html += '<td>' + (p.performance_score || '-') + '</td>';
+                        html += '<td>' + (p.potential_score || '-') + '</td>';
+                        html += '<td>格子' + (p.quadrant || '-') + '</td>';
+                        html += '<td>' + (p.notes || '-') + '</td>';
+                        html += '</tr>';
+                    });
+                    html += '</table></div>';
+
+                    // 分析建议
+                    html += '<div class="section"><h2>💡 综合分析与建议</h2><div class="summary-box">';
+                    html += '<p><strong>一、人才结构分析</strong></p>';
+                    html += '<p>本次盘点共覆盖 <strong>' + positions.length + '</strong> 名员工，其中：</p>';
+                    html += '<ul style="padding-left:20px;line-height:2;">';
+                    if (starCount > 0) html += '<li>超级明星（格子9）<strong>' + starCount + '</strong>人 — 组织的核心竞争力来源，需重点保留和激励</li>';
+                    if (coreCount > 0) html += '<li>核心人才（格子7-8）<strong>' + coreCount + '</strong>人 — 中坚力量，是组织稳定运行的基石</li>';
+                    if (midCount > 0) html += '<li>中坚力量（格子4-6）<strong>' + midCount + '</strong>人 — 有较大发展空间，需定向培养</li>';
+                    if (improveCount > 0) html += '<li>待改进员工（格子1-3）<strong>' + improveCount + '</strong>人 — 需制定改进计划或进行人员调整</li>';
+                    html += '</ul>';
+                    html += '<p><strong>二、关键行动建议</strong></p>';
+                    html += '<ol style="padding-left:20px;line-height:2;">';
+                    if (starCount > 0) html += '<li>对超级明星实施保留策略：薪酬激励、职业发展规划、挑战性项目分配</li>';
+                    if (coreCount > 0) html += '<li>为核心人才设计成长路径：轮岗机会、领导力培养、专项技能提升</li>';
+                    if (midCount > 0) html += '<li>对中坚力量开展IDP（个人发展计划）：明确3-6个月提升目标</li>';
+                    if (improveCount > 0) html += '<li>对待改进员工执行PIP（绩效改进计划）：设定30/60/90天里程碑</li>';
+                    html += '<li>建议每季度复盘一次九宫格位置变化，动态调整人才策略</li>';
+                    html += '</ol></div></div>';
+
+                    html += '<div class="no-print" style="text-align:center;margin-top:30px;"><button onclick="window.print()" style="padding:12px 40px;font-size:16px;cursor:pointer;background:#667eea;color:white;border:none;border-radius:8px;">🖨️ 打印报告</button></div>';
+                    html += '</body></html>';
+
+                    const printWindow = window.open('', '_blank');
+                    if (printWindow) {
+                        printWindow.document.write(html);
+                        printWindow.document.close();
+                    } else {
                         alert('请允许浏览器打开弹出窗口');
                     }
                 }
