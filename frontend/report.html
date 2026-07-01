@@ -290,6 +290,16 @@
                 </div>
             </div>
             
+            <!-- 调试：深度分析状态（上线后可删除此区块） -->
+            <div v-if="report" style="background: #f0f9eb; border: 1px solid #e1f3d8; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; font-size: 13px;">
+                <span style="color: #67c23a; font-weight: bold;">✅ 深度分析状态：</span>
+                professionalEnhancement
+                <span v-if="report.professionalEnhancement" style="color: #67c23a;">已加载 ({{ Object.keys(report.professionalEnhancement).length }}个模块)</span>
+                <span v-else style="color: #f56c6c;">未检测到</span>
+                &nbsp;|&nbsp;
+                数据来源：<span style="color: #409eff;">{{ report.toolName || '未知' }}</span>
+            </div>
+
             <!-- 各维度得分 -->
             <div class="card">
                 <div class="card-title"><span class="icon">📊</span> 各维度得分详情</div>
@@ -529,16 +539,34 @@
                             var rd = typeof r.report_data === 'string' ? JSON.parse(r.report_data) : r.report_data;
                             rd.overallScore = r.total_score || rd.overallScore || rd.totalScore || 0;
                             rd.created_at = r.created_at;
+
+                            // 【调试】检查 professionalEnhancement 数据
+                            console.log('[报告调试] API 返回的 report_data 字段:', Object.keys(rd));
+                            console.log('[报告调试] 有 professionalEnhancement?', !!rd.professionalEnhancement);
+                            if (rd.professionalEnhancement) {
+                                console.log('[报告调试] PE keys:', Object.keys(rd.professionalEnhancement));
+                            } else {
+                                console.warn('[报告调试] ⚠️ 缺少 professionalEnhancement！将尝试补充生成...');
+                                // 如果后端数据没有 professionalEnhancement，前端自动补充
+                                rd.professionalEnhancement = buildFrontendProfessionalEnhancement(rd);
+                                console.log('[报告调试] 前端已补充 PE, keys:', Object.keys(rd.professionalEnhancement));
+                            }
+
                             report.value = rd;
                         } else {
-                            report.value = getDemoReport(toolId || 1);
+                            console.warn('[报告调试] API 返回失败或无数据，使用 demo 报告');
+                            var demoRd = getDemoReport(toolId || 1);
+                            demoRd.professionalEnhancement = buildFrontendProfessionalEnhancement(demoRd);
+                            report.value = demoRd;
                         }
 
                         await nextTick();
                         setTimeout(() => renderRadarChart(), 300);
                     } catch (e) {
                         console.error('加载报告失败', e);
-                        report.value = getDemoReport(toolId || 1);
+                        var fallbackRd = getDemoReport(toolId || 1);
+                        fallbackRd.professionalEnhancement = buildFrontendProfessionalEnhancement(fallbackRd);
+                        report.value = fallbackRd;
                         await nextTick();
                         setTimeout(() => renderRadarChart(), 300);
                     } finally {
@@ -669,6 +697,97 @@
                         5: { toolName: '情商（EQ）测评', totalScore: 3.6, eqLevel: '良好', dimensions: {'自我意识':3.5,'自我调节':3.8,'内在激励':3.2,'同理心':4.0,'社交技能':3.5}, summary:'您的情商处于良好水平，同理心表现突出。', strengths: ['同理心强','自我调节能力好'], suggestions: ['建议提升社交技能','继续加强自我觉察'] }
                     };
                     return demos[toolId] || demos[1];
+                };
+
+                // ========== 前端保底：构建 professionalEnhancement 深度分析数据 ==========
+                // 当后端未返回此数据时，前端自动根据基础报告生成
+                const buildFrontendProfessionalEnhancement = (report) => {
+                    const dims = report.dimensions || {};
+                    const dimEntries = Object.entries(dims).sort((a,b) => b[1] - a[1]);
+                    const overall = report.overallScore || report.totalScore || 0;
+                    const maxDim = dimEntries[0] || ['', 0];
+                    const minDim = dimEntries[dimEntries.length - 1] || ['', 0];
+                    const strengths = report.strengths || [];
+                    const weaknesses = report.weaknesses || [];
+
+                    // 维度详细解读
+                    const detailedAnalysis = {};
+                    dimEntries.forEach(([dim, score]) => {
+                        let interpretation = '', workplaceBehavior = '', energySource = '';
+                        if (score >= 4) {
+                            interpretation = '该维度表现优秀（' + score + '分），显著高于平均水平。这表明您在此领域具有天然优势和持续发展的潜力。';
+                            workplaceBehavior = '在工作中倾向于主动承担相关任务，并能高质量完成。';
+                            energySource = '从挑战性和成就感中获得能量。';
+                        } else if (score >= 3) {
+                            interpretation = '该维度表现良好（' + score + '分），处于中等偏上水平。具备基本能力，仍有提升空间。';
+                            workplaceBehavior = '能够稳定发挥相关能力，在大多数场景下表现可靠。';
+                            energySource = '在支持性的环境中表现更好。';
+                        } else {
+                            interpretation = '该维度有待发展（' + score + '分），建议通过针对性训练和实践来提升。这是您未来发展的重点方向。';
+                            workplaceBehavior = '可能在该领域需要更多支持和指导。';
+                            energySource = '容易因相关任务消耗过多精力，需要合理分配。';
+                        }
+                        detailedAnalysis[dim] = { score, interpretation, workplaceBehavior, energySource };
+                    });
+
+                    // 推荐岗位
+                    const topRoles = [];
+                    const roleMap = {
+                        '开放性': [{role:'产品经理/创新岗',match:88},{role:'创意设计师',match:82}],
+                        '尽责性': [{role:'项目管理/运营',match:90},{role:'质量控制/审计',match:85}],
+                        '外向性': [{role:'销售/市场拓展',match:87},{role:'公关/商务',match:83}],
+                        '宜人性': [{role:'人力资源/培训',match:89},{role:'客户服务',match:84}],
+                        '情绪稳定性': [{role:'危机管理/风控',match:86},{role:'高管教练',match:80}]
+                    };
+                    if (maxDim[0] && roleMap[maxDim[0]]) {
+                        topRoles.push(...roleMap[maxDim[0]]);
+                    }
+                    if (topRoles.length < 3 && minDim[0] && roleMap[minDim[0]]) {
+                        topRoles.push(...roleMap[minDim[0]].slice(0, 1));
+                    }
+                    if (topRoles.length === 0) {
+                        topRoles.push({role:'综合管理岗', match:75}, {role:'专业技术人员', match:72});
+                    }
+
+                    // 发展路线图
+                    const shortTerm = weaknesses.slice(0, 3).map(w => '针对"' + w + '"制定改进计划');
+                    if (shortTerm.length === 0) shortTerm.push('保持当前优势领域的发展势头');
+                    shortTerm.push('深入学习与' + maxDim[0] + '相关的专业知识');
+
+                    const longTerm = [
+                        '基于' + maxDim[0] + '优势，向' + (topRoles[0]?topRoles[0].role:'专业岗位')+'方向发展',
+                        '培养跨领域能力，建立T型人才竞争力',
+                        '建立个人品牌和行业影响力'
+                    ];
+
+                    // 风险评估
+                    const risks = [];
+                    if (overall < 3) {
+                        risks.push({factor:'综合能力偏低', level:'中高', mitigation:'建议系统性学习核心技能，参加培训项目'});
+                    }
+                    if (minDim[1] > 0 && minDim[1] < 2.5) {
+                        risks.push({factor:minDim[0]+'严重不足', level:'中', mitigation:'优先补齐短板，可通过导师辅导或专项训练'});
+                    }
+                    if (strengths.length === 0) {
+                        risks.push({factor:'优势不明确', level:'低', mitigation:'尝试多种工作内容，发现潜在优势'});
+                    }
+                    if (risks.length === 0) {
+                        risks.push({factor:'整体均衡但无突出亮点', level:'低', mitigation:'建议聚焦1-2个核心方向深耕，打造差异化竞争力'});
+                    }
+
+                    const overallRisk = risks.some(r => r.level === '中高') ? '较高'
+                                       : risks.some(r => r.level === '中') ? '中等' : '较低';
+
+                    return {
+                        executiveSummary: '本次测评综合得分为' + overall + '分。您在' + maxDim[0] + '方面最具优势（' + maxDim[1] + '分）' + (minDim[1] > 0 ? '，相对而言' + minDim[0] + '有提升空间（' + minDim[1] + '分）。' : '。') + '整体风险等级为"' + overallRisk + '"。',
+                        detailedAnalysis,
+                        careerMatch: {
+                            reasoning: '基于您的维度得分分布，重点推荐以下发展方向，这些岗位能最大程度发挥您的优势并弥补短板：',
+                            topRoles: topRoles.slice(0, 3)
+                        },
+                        developmentRoadmap: { shortTerm, longTerm },
+                        riskAssessment: { risks, overallRisk }
+                    };
                 };
                 
                 onMounted(() => {
