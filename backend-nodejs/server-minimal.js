@@ -1370,12 +1370,325 @@ function generateReportSummary(toolId, answers, userInfo) {
         4: genHolland,
         5: genEQ,
         6: genMotivation,
-        7: genValues
+        7: genValues,
+        8: genLeadership, 9: genCommunication, 10: genTeamwork,
+        11: genProblemSolving, 12: genResilience, 13: genLearning,
+        14: genInnovation, 15: genExecution,
+        16: gen360Feedback, 17: genCareerAnchor, 18: genPsyCap,
+        19: genOrgCommitment, 20: genLeadershipStyle, 21: genCareerMaturity,
+        22: genJobSatisfaction, 23: genCareerStress
     };
 
     var fn = generators[toolId];
-    if (fn) return fn(answers);
-    return { toolName: '测评', summary: '测评已完成，报告已生成。', dimensions: {}, overallScore: 0 };
+    if (fn) {
+        var result = fn(answers);
+        // 为所有报告追加 professionalEnhancement 深度分析（如果还没有）
+        if (!result.professionalEnhancement) {
+            result.professionalEnhancement = buildProfessionalEnhancement(result);
+        }
+        return result;
+    }
+
+    // ========== 通用深度报告生成器（工具24+及所有未匹配工具）==========
+    return generateUniversalDeepReport(toolId, answers);
+}
+
+// ==================== 通用深度报告生成器 ====================
+function generateUniversalDeepReport(toolId, answers) {
+    // 从答案中提取维度和分数
+    var dimScores = {}, dimCounts = {};
+    answers.forEach(function(a) {
+        var d = a.dimension || '综合能力';
+        var v = parseFloat(a.answer) || 0;
+        if (!dimScores[d]) { dimScores[d] = 0; dimCounts[d] = 0; }
+        dimScores[d] += v;
+        dimCounts[d]++;
+    });
+
+    var dimensions = {};
+    Object.keys(dimScores).forEach(function(d) {
+        dimensions[d] = Math.round(dimScores[d] / dimCounts[d] * 10) / 10;
+    });
+
+    var dims = Object.keys(dimensions);
+    var scores = dims.map(function(d) { return dimensions[d]; });
+    var overallScore = scores.length > 0 
+        ? Math.round(scores.reduce(function(a,b){return a+b}, 0) / scores.length * 10) / 10 
+        : 3.0;
+
+    // 排序：高→低
+    var sorted = dims.map(function(d) { return [d, dimensions[d]]; }).sort(function(a,b) { return b[1] - a[1]; });
+    var topDims = sorted.slice(0, 3);
+    var bottomDims = sorted.slice(-3).reverse();
+
+    // 常模百分位
+    var percentiles = {};
+    dims.forEach(function(d) {
+        percentiles[d] = Math.min(99, Math.max(1, Math.round((dimensions[d] - 1) / 4 * 100)));
+    });
+
+    // 风险评估
+    var weakDims = sorted.filter(function(x) { return x[1] < 2.5; });
+    var riskLevel = weakDims.length === 0 ? '低' : weakDims.length <= 2 ? '中' : '较高';
+    var risks = weakDims.map(function(x) {
+        return {
+            factor: x[0] + '不足（' + x[1] + '分）',
+            level: x[1] < 2.0 ? '高' : '中',
+            mitigation: getUniversalSuggestion(x[0], x[1])
+        };
+    });
+    if (risks.length === 0) {
+        risks.push({ factor: '整体均衡发展', level: '低', mitigation: '继续保持各维度平衡发展，定期复盘防止退化' });
+    }
+
+    // 发展路线图
+    var shortTermGoals = bottomDims.map(function(x) {
+        return '针对「' + x[0] + '」制定30天提升计划，目标从' + x[1] + '分提升至' + (Math.min(5, x[1] + 0.8)).toFixed(1) + '分';
+    });
+    if (shortTermGoals.length === 0) shortTermGoals.push('巩固现有优势维度，选择1个维度进行突破性提升');
+    shortTermGoals.push('寻找一位导师或教练进行定期反馈');
+
+    var longTermGoals = [
+        '将「' + (topDims[0] ? topDims[0][0] : '核心优势') + '」发展为个人品牌标签',
+        '建立跨维度的能力整合，形成复合型竞争力',
+        '根据测评结果调整职业发展方向和组织角色定位'
+    ];
+
+    // 职业匹配
+    var careerReasoning = '基于您的测评结果，您在' +
+        topDims.map(function(x){return x[0];}).join('、') +
+        '方面表现突出（' + topDims.map(function(x){return x[1];}).join('/') + '分），建议优先考虑需要这些能力的岗位方向。';
+    
+    var topRoles = topDims.slice(0, 3).map(function(x) {
+        return {
+            role: getRoleByDimension(x[0]),
+            match: Math.round(70 + x[1] * 6),
+            reason: '您在' + x[0] + '维度得分' + x[1] + '分，高于人群平均水平的' + percentiles[x[0]] + '%'
+        };
+    });
+    if (topRoles.length === 0) {
+        topRoles.push({ role: '通用专业岗位', match: 75, reason: '综合能力均衡，可根据专业技能自由选择' });
+    }
+
+    // 详细维度分析
+    var detailedAnalysis = {};
+    sorted.forEach(function(item) {
+        var d = item[0], s = item[1];
+        detailedAnalysis[d] = {
+            score: s,
+            interpretation: getDimensionInterpretation(d, s),
+            workplaceBehavior: getWorkplaceBehavior(d, s),
+            energySource: getEnergySource(d, s),
+            conflictStyle: getConflictStyle(d, s)
+        };
+    });
+
+    // 综合评估摘要
+    var execSummary = '本次测评共覆盖' + dims.length + '个核心维度，您的综合得分为' + overallScore + '分（5分制）。';
+    if (overallScore >= 4.0) {
+        execSummary += '您在多个维度上表现出色，属于"优秀人才"区间。尤其在' + topDims[0][0] + '（' + topDims[0][1] + '分）方面具有显著优势。';
+    } else if (overallScore >= 3.2) {
+        execSummary += '您的整体表现处于"良好"水平。优势领域为' + topDims.map(function(x){return x[0];}).join('、') + '，同时需要在' + (bottomDims[0] ? bottomDims[0][0] : '部分维度') + '方面加强。';
+    } else {
+        execSummary += '您的测评结果显示有较大的提升空间。建议重点关注' + bottomDims.map(function(x){return x[0];}).join('、') + '等薄弱维度，通过系统训练逐步提升。';
+    }
+    execSummary += '整体风险等级为"' + riskLevel + '"，' + (riskLevel === '低' ? '发展前景良好。' : '需要有针对性地制定改进计划。');
+
+    return {
+        toolName: '专业人才测评报告（工具' + toolId + '）',
+        overallScore: overallScore,
+        totalScore: overallScore,
+        dimensions: dimensions,
+        percentiles: percentiles,
+
+        summary: [
+            '【专业测评报告 — 深度分析版】',
+            '',
+            '一、测评概况',
+            '• 测评维度数：' + dims.length + ' 个',
+            '• 综合得分：' + overallScore + ' / 5.00 分',
+            '• 风险等级：' + riskLevel,
+            '• 最高维度：' + (topDims[0] ? topDims[0][0] + '（' + topDims[0][1] + '分）' : '-'),
+            '• 待提升维度：' + (bottomDims[0] ? bottomDims[0][0] + '（' + bottomDims[0][1] + '分）' : '-'),
+            '',
+            '二、综合评估摘要',
+            execSummary,
+            '',
+            '三、各维度详细解读',
+            ...sorted.map(function(x) {
+                return '• ' + x[0] + '（' + x[1] + '分，常模前' + (100 - percentiles[x[0]]) + '%）：' + getDimensionInterpretation(x[0], x[1]);
+            }),
+            '',
+            '四、核心优势分析',
+            ...sorted.filter(function(x){return x[1]>=3.5}).map(function(x,i){
+                return (i+1)+'. '+x[0]+'（'+x[1]+'分）：'+getDimensionInterpretation(x[0],x[1]);
+            }),
+            '',
+            '五、待提升领域与改进建议',
+            ...sorted.filter(function(x){return x[1]<3.0}).map(function(x,i){
+                return (i+1)+'. '+x[0]+'（'+x[1]+'分）：建议'+getUniversalSuggestion(x[0],x[1]);
+            }),
+            '',
+            '六、风险评估与管理建议',
+            '整体风险等级：' + riskLevel,
+            ...risks.map(function(r){return '• '+r.factor+' — 缓解方式：'+r.mitigation;}),
+            '',
+            '七、职业发展方向建议',
+            careerReasoning,
+            ...topRoles.map(function(r){return '• '+r.role+'（匹配度'+r.match+'%）：'+r.reason;}),
+            '',
+            '八、行动规划',
+            '短期目标（3个月）：',
+            ...shortTermGoals.map(function(g){return '☐ '+g;}),
+            '',
+            '长期规划（12个月）：',
+            ...longTermGoals.map(function(g){return '○ '+g;}),
+            '',
+            '【报告说明】本报告基于标准化测评工具生成，结果仅供参考。建议结合360度反馈、绩效数据和实际工作表现进行综合判断。'
+        ].join('\n'),
+
+        strengths: sorted.filter(function(x){return x[1]>=3.5}).map(function(x,i){
+            return {name: x[0]+'优势', desc: getDimensionInterpretation(x[0], x[1])};
+        }),
+        weaknesses: sorted.filter(function(x){return x[1]<3.0}).map(function(x,i){
+            return {name: x[0]+'待提升', desc: getUniversalSuggestion(x[0], x[1])};
+        }),
+        suggestions: bottomDims.map(function(x){
+            return getUniversalSuggestion(x[0], x[1]);
+        }).concat(['发挥'+(topDims[0]?topDims[0][0]:'核心')+'维度优势形成差异化竞争力']),
+
+        jobMatch: topRoles.map(function(r){ return r.role + '（匹配度' + r.match + '%）'; }),
+
+        interviewQuestions: [
+            '请描述一次您利用' + (topDims[0] ? topDims[0][0] : '核心能力') + '成功解决复杂问题的具体经历',
+            '您认为自己在' + (bottomDims[0] ? bottomDims[0][0] : '某些方面') + '最大的挑战是什么？如何应对？',
+            '如果让您领导一个跨部门项目，您会如何发挥自己的优势并弥补短板？'
+        ],
+
+        professionalEnhancement: {
+            executiveSummary: execSummary,
+            detailedAnalysis: detailedAnalysis,
+            careerMatch: {
+                reasoning: careerReasoning,
+                topRoles: topRoles
+            },
+            developmentRoadmap: {
+                shortTerm: shortTermGoals,
+                longTerm: longTermGoals
+            },
+            riskAssessment: {
+                risks: risks,
+                overallRisk: riskLevel + '风险'
+            }
+        }
+    };
+}
+
+// ==================== Professional Enhancement 构建器（为已有报告补充深度分析）====================
+function buildProfessionalEnhancement(report) {
+    var dims = report.dimensions || {};
+    var dimKeys = Object.keys(dims);
+    var scores = dimKeys.map(function(d) { return dims[d]; });
+    var overall = report.overallScore || report.totalScore || (scores.length > 0 ? scores.reduce(function(a,b){return a+b},0)/scores.length : 3);
+
+    var sorted = dimKeys.map(function(d) { return [d, dims[d]]; }).sort(function(a,b) { return b[1] - a[1]; });
+    var topDims = sorted.slice(0, 3);
+    var bottomDims = sorted.slice(-3).reverse();
+
+    // 风险评估
+    var weakDims = sorted.filter(function(x) { return x[1] < 2.5; });
+    var riskLevel = weakDims.length === 0 ? '低' : weakDims.length <= 2 ? '中' : '较高';
+    var risks = weakDims.map(function(x) {
+        return { factor: x[0], level: x[1] < 2.0 ? '高' : '中', mitigation: getUniversalSuggestion(x[0], x[1]) };
+    });
+    if (risks.length === 0) risks.push({ factor: '整体均衡', level: '低', mitigation: '继续保持' });
+
+    // 职业匹配
+    var topRoles = topDims.slice(0, 3).map(function(x) {
+        return { role: getRoleByDimension(x[0]), match: Math.round(70 + x[1] * 6), reason: x[0] + '得分' + x[1] + '分' };
+    });
+
+    // 发展路线图
+    var shortTermGoals = bottomDims.map(function(x) {
+        return '针对「' + x[0] + '」制定30天提升计划（当前' + x[1] + '→ 目标' + (Math.min(5, x[1]+0.8)).toFixed(1) + '分）';
+    });
+    shortTermGoals.push('寻求导师反馈，建立定期复盘习惯');
+    var longTermGoals = ['将核心优势发展为个人品牌', '构建跨维度复合能力', '调整职业方向与组织角色'];
+
+    // 详细维度分析
+    var detailedAnalysis = {};
+    sorted.forEach(function(item) {
+        detailedAnalysis[item[0]] = {
+            score: item[1],
+            interpretation: getDimensionInterpretation(item[0], item[1]),
+            workplaceBehavior: getWorkplaceBehavior(item[0], item[1]),
+            energySource: getEnergySource(item[0], item[1]),
+            conflictStyle: getConflictStyle(item[0], item[1])
+        };
+    });
+
+    return {
+        executiveSummary: '本次测评综合得分为' + overall.toFixed(1) + '分。您在' + 
+            (topDims[0] ? topDims[0][0] : '核心维度') + '方面最具优势（' + (topDims[0] ? topDims[0][1] : '-') + '分），' +
+            (bottomDims[0] ? '在' + bottomDims[0][0] + '方面有提升空间（' + bottomDims[0][1] + '分）' : '各维度发展相对均衡') + 
+            '。整体风险等级为"' + riskLevel + '"。',
+        detailedAnalysis: detailedAnalysis,
+        careerMatch: {
+            reasoning: '基于测评结果的优势维度分布，推荐聚焦于能充分发挥核心竞争力的岗位方向。',
+            topRoles: topRoles
+        },
+        developmentRoadmap: {
+            shortTerm: shortTermGoals,
+            longTerm: longTermGoals
+        },
+        riskAssessment: {
+            risks: risks,
+            overallRisk: riskLevel + '风险'
+        }
+    };
+}
+
+// ==================== 通用辅助函数 ====================
+function getDimensionInterpretation(dim, score) {
+    if (score >= 4.5) return '卓越水平。在此维度上您展现出远超常人的能力和素养，是团队中的标杆人物，可担任该领域的导师或专家角色。';
+    if (score >= 4.0) return '优秀水平。在该维度上表现突出，能够独立承担高难度任务，是该领域的可靠执行者。';
+    if (score >= 3.5) return '良好偏上。具备较强的能力基础，在大多数场景下能够胜任，有进一步精进的潜力。';
+    if (score >= 3.0) return '中等水平。达到基本胜任标准，但在复杂或高压场景下可能需要更多支持。';
+    if (score >= 2.5) return '发展中水平。已具备初步能力框架，但距离熟练应用还有差距，需要针对性训练。';
+    return '待提升阶段。目前该维度是明显的短板区域，建议作为优先改进项投入资源。';
+}
+function getWorkplaceBehavior(dim, score) {
+    if (score >= 4.0) return '主动承担责任、带动团队氛围、成为他人学习的榜样';
+    if (score >= 3.0) return '稳定输出、配合团队需求、按质完成任务';
+    return '需要指导和支持、在结构化环境中成长、逐步增加挑战';
+}
+function getEnergySource(dim, score) {
+    if (score >= 4.0) return '从挑战性任务和高难度目标中获得最大满足感';
+    if (score >= 3.0) return '在团队协作和认可中获得动力';
+    return '需要安全感和明确指引来保持积极状态';
+}
+function getConflictStyle(dim, score) {
+    if (score >= 4.0) return '以建设性方式化解分歧、寻求双赢方案';
+    if (score >= 3.0) return '倾向于妥协或回避直接冲突';
+    return '可能采取对抗或退缩的极端方式，需学习冲突管理技巧';
+}
+function getUniversalSuggestion(dim, score) {
+    if (score < 2.0) return '建议立即参加系统性培训课程，寻找导师一对一辅导，设定每日微练习目标';
+    if (score < 2.5) return '推荐参加专项工作坊、阅读经典书籍、在实践中刻意练习并获取反馈';
+    if (score < 3.0) return '建议通过轮岗/项目参与积累经验、寻找互补型搭档协作、每月自我反思复盘';
+    return '继续深耕此领域、尝试教导他人以深化理解、探索进阶应用场景';
+}
+function getRoleByDimension(dim) {
+    var roleMap = {
+        '领导力': '团队负责人/项目经理', '沟通': '客户经理/公关/HRBP',
+        '团队合作': '项目协调者/运营专员', '问题解决': '技术顾问/分析师',
+        '抗压': '危机管理/客服主管', '学习能力': '研究员/战略规划',
+        '创新': '产品经理/设计师', '执行力': '运营主管/交付经理',
+        '批判性思维': '质量总监/风控经理', '认知能力': '策略顾问/架构师',
+        '数字素养': '数据分析师/数字化专员', '跨文化': '国际业务/海外拓展',
+        '学习敏锐度': '变革推动者/新业务负责人'
+    };
+    return roleMap[dim] || '专业岗位（' + dim + '方向）';
 }
 
 // ==================== 辅助函数 ====================
