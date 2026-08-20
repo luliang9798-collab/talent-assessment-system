@@ -9,8 +9,11 @@ const path = require('path');
 // 专业报告生成模块（内联版，避免模块加载问题）
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-const JWT_SECRET = 'talent-assessment-secret-key-2026';
+const PORT = parseInt(process.env.PORT || '3000', 10);
+const JWT_SECRET = process.env.JWT_SECRET || 'talent-assessment-secret-key-2026';
+
+// 首次启动自动初始化数据库（建表 + 种子数据）
+const { ensureDatabase } = require('./db-init/init');
 
 app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
@@ -18,11 +21,8 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.static(path.join(__dirname, '../frontend')));
 
 // 数据库连接
-const DB_PATH = './talent_assessment_new.db';
-const db = new sqlite3.Database(DB_PATH, (err) => {
-    if (err) console.error('DB connection error:', err);
-    else console.log('Database connected:', DB_PATH);
-});
+const DB_PATH = process.env.DB_PATH || './talent_assessment_new.db';
+let db;
 
 // ========== JWT 认证中间件 ==========
 function auth(req, res, next) {
@@ -799,25 +799,9 @@ function genGenericCompetencyReport(answers, dimensionNames) {
 // ========== 结束：胜任力测评报告生成函数 ==========
 
 function generateReportSummary(toolId, answers, userInfo) {
-    // ========== 新增专业测评工具 (16-23) ==========
-    if (toolId === 16) return gen360Feedback(answers);
-    if (toolId === 17) return genCareerAnchor(answers);
-    if (toolId === 18) return genPsyCap(answers);
-    if (toolId === 19) return genOrgCommitment(answers);
-    if (toolId === 20) return genLeadershipStyle(answers);
-    if (toolId === 21) return genCareerMaturity(answers);
-    if (toolId === 22) return genJobSatisfaction(answers);
-    if (toolId === 23) return genCareerStress(answers);
-    
-    // ========== 胜任力测评工具 (8-15) ==========
-    if (toolId === 8) return genLeadership(answers);
-    if (toolId === 9) return genCommunication(answers);
-    if (toolId === 10) return genTeamwork(answers);
-    if (toolId === 11) return genProblemSolving(answers);
-    if (toolId === 12) return genResilience(answers);
-    if (toolId === 13) return genLearning(answers);
-    if (toolId === 14) return genInnovation(answers);
-    if (toolId === 15) return genExecution(answers);
+    // ========== 测评工具报告生成器 ==========
+    // 所有工具的报告生成逻辑都在后面的"工具分发器"中统一处理
+    // 这样可以确保所有报告都包含 professionalEnhancement 深度分析数据
     
     // ========== 1. 大五人格（OCEAN）- 专业版 ==========
     const genBigFive = function(answers) {
@@ -1385,6 +1369,11 @@ function generateReportSummary(toolId, answers, userInfo) {
         // 为所有报告追加 professionalEnhancement 深度分析（如果还没有）
         if (!result.professionalEnhancement) {
             result.professionalEnhancement = buildProfessionalEnhancement(result);
+        }
+        // 添加日志：验证 professionalEnhancement 是否生成
+        console.log('[DEBUG] Report generated for tool', toolId, 'has professionalEnhancement:', !!result.professionalEnhancement);
+        if (result.professionalEnhancement) {
+            console.log('[DEBUG] professionalEnhancement keys:', Object.keys(result.professionalEnhancement));
         }
         return result;
     }
@@ -3593,12 +3582,22 @@ app.get('/api/competency/models-overview', auth, (req, res) => {
 });
 
 // ========== 启动服务器 ==========
-app.listen(PORT, () => {
-    console.log('');
-    console.log('========================================');
-    console.log('  ✅ 人才测评系统后端服务已启动');
-    console.log('========================================');
-    console.log('  地址: http://localhost:' + PORT);
-    console.log('  账号: admin / admin123');
-    console.log('========================================');
+ensureDatabase().then(() => {
+    db = new sqlite3.Database(DB_PATH, (err) => {
+        if (err) { console.error('DB connection error:', err); process.exit(1); }
+        else console.log('Database connected:', DB_PATH);
+    });
+    app.listen(PORT, () => {
+        console.log('');
+        console.log('========================================');
+        console.log('  ✅ 人才测评系统后端服务已启动');
+        console.log('========================================');
+        console.log('  地址: http://localhost:' + PORT);
+        console.log('  账号: admin / admin123');
+        console.log('  数据库: ' + DB_PATH);
+        console.log('========================================');
+    });
+}).catch((e) => {
+    console.error('数据库初始化失败，服务无法启动:', e.message);
+    process.exit(1);
 });
