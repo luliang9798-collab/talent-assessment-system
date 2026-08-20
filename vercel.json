@@ -1,16 +1,11 @@
 {
   "version": 2,
   "builds": [
-    {
-      "src": "backend-nodejs/server-minimal.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "frontend/**/*",
-      "use": "@vercel/static"
-    }
+    { "src": "backend-nodejs/server-render.js", "use": "@vercel/node" },
+    { "src": "frontend/**/*.html", "use": "@vercel/static" }
   ],
   "routes": [
-    { "src": "/(.*)", "dest": "/backend-nodejs/server-minimal.js" }
+    { "src": "/api/(.*)", "dest": "backend-nodejs/server-render.js" },
+    { "src": "/(.*)", "dest": "/frontend/$1" }
   ]
 }
