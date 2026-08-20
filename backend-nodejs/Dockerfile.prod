@@ -1,35 +1,47 @@
-# 生产环境Dockerfile
-FROM node:22-alpine
+# 生产环境 Dockerfile（与真实架构一致：Node.js + SQLite + server-minimal.js）
+# 使用 Debian 基础镜像，better-sqlite3 可下载预编译二进制，避免 Alpine(musl) 下的源码编译问题
+FROM node:20-bullseye-slim
+
+# 安装运行时依赖（better-sqlite3 预编译需要 libsqlite3，但预编译二进制已自带；保留 ca-certificates 以便访问外部源）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
 # 设置工作目录
 WORKDIR /app
 
-# 创建非root用户
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
+# 创建非 root 用户
+RUN groupadd -g 1001 -r nodejs && \
+    useradd -m -u 1001 -r -g nodejs nodejs
 
-# 复制package.json
-COPY package*.json ./
+# 先复制依赖清单，利用 Docker 层缓存
+COPY backend-nodejs/package.json ./
 
-# 安装生产依赖
-RUN npm ci --only=production
+# 安装生产依赖（无 package-lock，使用 install；自动下载 better-sqlite3 预编译二进制）
+RUN npm install --omit=dev --no-audit --no-fund
 
-# 复制源代码
-COPY . .
+# 复制后端代码与初始化脚本
+COPY backend-nodejs/ ./
 
-# 创建数据和日志目录
+# 创建数据与日志目录
 RUN mkdir -p /app/data /app/logs && \
     chown -R nodejs:nodejs /app/data /app/logs
 
-# 切换 to non-root user
+# 切换到非 root 用户
 USER nodejs
+
+# 默认数据库路径（容器内数据卷挂载点）
+ENV DB_PATH=/app/data/talent_assessment_new.db
+ENV PORT=3000
+ENV NODE_ENV=production
 
 # 暴露端口
 EXPOSE 3000
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+  CMD node -e "require('http').get('http://localhost:3000/api/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1) })"
 
-# 启动应用
-CMD ["node", "server.js"]
+# 启动应用（首次启动会自动建库并写入种子数据）
+CMD ["node", "server-minimal.js"]
