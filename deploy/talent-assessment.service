@@ -1,0 +1,33 @@
+[Unit]
+Description=人才测评系统 (Talent Assessment System)
+Documentation=https://github.com/luliang9798-collab/talent-assessment-system
+After=network.target
+
+[Service]
+Type=simple
+# 运行用户（请确保该用户对数据目录有读写权限）
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/talent-assessment/backend-nodejs
+
+# 从 .env 读取环境变量
+EnvironmentFile=/opt/talent-assessment/.env
+
+# 启动命令
+ExecStart=/usr/bin/node /opt/talent-assessment/backend-nodejs/server-minimal.js
+
+# 优雅重启与故障恢复
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# 安全加固
+NoNewPrivileges=true
+ProtectSystem=strict
+# 仅允许写入数据与日志目录（按需放开）
+ReadWritePaths=/opt/talent-assessment/backend-nodejs /opt/talent-assessment/backend-nodejs/data /opt/talent-assessment/backend-nodejs/logs
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
